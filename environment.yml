@@ -11,3 +11,4 @@ dependencies:
   - clang
   - compiler-rt
   - clang-tools
+  - gcovr

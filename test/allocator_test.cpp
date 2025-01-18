@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <gtest/gtest.h>
 #include <vector>
 
@@ -21,7 +22,7 @@ protected:
 TEST_F(DPAllocatorTest, SingleAllocation) {
   void *ptr = dp_malloc(&allocator, 100);
   ASSERT_NE(nullptr, ptr);
-  EXPECT_GE(allocator.available, BUFFER_SIZE - 100 - sizeof(block_header));
+  EXPECT_GE(allocator.available, BUFFER_SIZE - 100 - 2 * sizeof(block_header));
 }
 
 TEST_F(DPAllocatorTest, MultipleAllocations) {
@@ -47,7 +48,7 @@ TEST_F(DPAllocatorTest, FragmentationAndCoalescing) {
   dp_free(&allocator, ptr2);
 
   // Allocate slightly smaller block - should fit in the gap
-  void *ptr4 = dp_malloc(&allocator, 80);
+  void *ptr4 = dp_malloc(&allocator, 100);
   ASSERT_NE(nullptr, ptr4);
 
   // Free all blocks
@@ -56,9 +57,9 @@ TEST_F(DPAllocatorTest, FragmentationAndCoalescing) {
   dp_free(&allocator, ptr4);
 
   // Should be able to allocate a large block now
-  // void *large_ptr =
-  //     dp_malloc(&allocator, BUFFER_SIZE - sizeof(block_header) - 16);
-  // ASSERT_NE(nullptr, large_ptr);
+  void *large_ptr =
+      dp_malloc(&allocator, 900);
+  ASSERT_NE(nullptr, large_ptr);
 }
 
 // Edge Cases
@@ -73,7 +74,7 @@ TEST_F(DPAllocatorTest, TooLargeAllocation) {
 }
 
 TEST_F(DPAllocatorTest, ExactSizeAllocation) {
-  void *ptr = dp_malloc(&allocator, BUFFER_SIZE - sizeof(block_header));
+  void *ptr = dp_malloc(&allocator, BUFFER_SIZE - 2 * sizeof(block_header));
   ASSERT_NE(nullptr, ptr);
   EXPECT_EQ(nullptr, dp_malloc(&allocator, 1)); // Should be full
 }

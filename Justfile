@@ -3,7 +3,6 @@ configure:
   cmake -B build .
 
 test coverage="OFF":
-  just clean
   cmake -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE={{coverage}} .
   cmake --build ./build --target allocator_test
   ctest --output-on-failure --test-dir build/test/ || true
