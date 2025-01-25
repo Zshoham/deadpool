@@ -1,6 +1,8 @@
+#include <cstdlib>
 #include <numeric>
 #include <ostream>
 #include <random>
+#include <unordered_set>
 #include <vector>
 #include <cstring>
 #include <iostream>
@@ -12,13 +14,13 @@
 // Utility class for benchmarks
 class BenchmarkAllocator {
 public:
-  static const size_t BUFFER_SIZE = 4 * 1024 * 1024; // 1MB buffer
+  static const size_t DEFAULT_BUFFER_SIZE = 1024 * 1024; // 1MB buffer
   uint8_t *raw_buffer;
   dp_alloc allocator;
 
-  BenchmarkAllocator() {
-    raw_buffer = new uint8_t[BUFFER_SIZE];
-    dp_init(&allocator, raw_buffer, BUFFER_SIZE);
+  BenchmarkAllocator(size_t buffer_size=DEFAULT_BUFFER_SIZE) {
+    raw_buffer = new uint8_t[buffer_size];
+    dp_init(&allocator, raw_buffer, buffer_size);
   }
 
   ~BenchmarkAllocator() { delete[] raw_buffer; }
@@ -26,10 +28,10 @@ public:
 
 // Basic allocation and deallocation benchmark
 static void BM_BasicAllocation(benchmark::State &state) {
-  BenchmarkAllocator bench;
   const size_t allocation_size = state.range(0);
 
   for (auto _ : state) {
+    BenchmarkAllocator bench;
     void *ptr = dp_malloc(&bench.allocator, allocation_size);
     benchmark::DoNotOptimize(ptr);
     dp_free(&bench.allocator, ptr);
@@ -46,13 +48,13 @@ BENCHMARK(BM_BasicAllocation)
 
 // Multiple allocations of same size
 static void BM_MultipleAllocations(benchmark::State &state) {
-  BenchmarkAllocator bench;
   const int num_allocs = state.range(0);
   const size_t alloc_size = state.range(1);
   std::vector<void *> ptrs;
   ptrs.reserve(num_allocs);
 
   for (auto _ : state) {
+    BenchmarkAllocator bench(num_allocs * (alloc_size + 100) );
     for (int i = 0; i < num_allocs; i++) {
       void *ptr = dp_malloc(&bench.allocator, alloc_size);
       benchmark::DoNotOptimize(ptr);
@@ -76,7 +78,6 @@ BENCHMARK(BM_MultipleAllocations)
 
 // Fragmentation stress test
 static void BM_FragmentationStress(benchmark::State &state) {
-  BenchmarkAllocator bench;
   std::vector<void *> ptrs;
   const int num_allocs = state.range(0);
   std::random_device rd;
@@ -84,6 +85,7 @@ static void BM_FragmentationStress(benchmark::State &state) {
   std::uniform_int_distribution<> size_dist(8, 256); // Random sizes
 
   for (auto _ : state) {
+    BenchmarkAllocator bench;
     // Phase 1: Allocate with random sizes
     for (int i = 0; i < num_allocs; i++) {
       size_t size = size_dist(gen);
@@ -102,6 +104,10 @@ static void BM_FragmentationStress(benchmark::State &state) {
     for (size_t i = 0; i < ptrs.size(); i += 2) {
       size_t size = size_dist(gen) * 2; // Larger allocations
       void *ptr = dp_malloc(&bench.allocator, size);
+      if (!ptr) {
+        state.SkipWithError("Damn did not mind the gap.");
+        exit(1);
+      }
       benchmark::DoNotOptimize(ptr);
     }
 
@@ -122,20 +128,22 @@ BENCHMARK(BM_FragmentationStress)
 
 // Extreme stress test - rapid allocations and deallocations with varying sizes
 static void BM_ExtremeStress(benchmark::State &state) {
-  BenchmarkAllocator bench;
   const int operations = state.range(0);
   std::vector<std::pair<void *, size_t>> allocations;
+  std::unordered_set<void*> alloc_set;
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> size_dist(1, 1024); // 1B to 1KB
   std::uniform_real_distribution<> action_dist(0.0, 1.0);
 
   for (auto _ : state) {
+    BenchmarkAllocator bench;
     size_t total_allocated = 0;
 
     for (int i = 0; i < operations; i++) {
       double action = action_dist(gen);
       // 70% chance to allocate if under 900KB
+      // if ((total_allocated < 800*1024 || action < 0.7) && total_allocated < 980 * 1024) {
       if (action < 0.7 && total_allocated < 900 * 1024) {
         size_t size = size_dist(gen);
         void *ptr = dp_malloc(&bench.allocator, size);
@@ -144,24 +152,35 @@ static void BM_ExtremeStress(benchmark::State &state) {
           std::memset(ptr, 0xFF, size);
           benchmark::DoNotOptimize(ptr);
           allocations.push_back({ptr, size});
+          if (alloc_set.contains(ptr)) {
+            state.SkipWithError("Alloced the same pointer again ??");
+            benchmark::DoNotOptimize(ptr);
+            std::cout << "Why do you do this ??" << i << std::endl;
+            exit(1);
+          }
+          alloc_set.insert(ptr);
           total_allocated += size;
+        } else {
+          state.SkipWithError("Cant alloc");
         }
       } else if (!allocations.empty()) {
         // Free random allocation
         size_t index = gen() % allocations.size();
-        std::cerr << "Trying to free - " << allocations[index].first << std::endl;
-        dp_free(&bench.allocator, allocations[index].first);
+        if (dp_free(&bench.allocator, allocations[index].first) != 0) {
+          state.SkipWithError("Cant free" + std::to_string(i));
+        }
         total_allocated -= allocations[index].second;
+        alloc_set.erase(allocations[index].first);
         allocations.erase(allocations.begin() + index);
       }
     }
 
     // Cleanup remaining allocations
     for (auto &alloc : allocations) {
-      // std::cerr << "Trying to free - " << alloc.first << std::endl;
       dp_free(&bench.allocator, alloc.first);
     }
     allocations.clear();
+    alloc_set.clear();
   }
 
   state.SetItemsProcessed(state.iterations() * operations);
@@ -174,7 +193,6 @@ BENCHMARK(BM_ExtremeStress)
 
 // Real-world simulation - web server allocation pattern
 static void BM_WebServerSimulation(benchmark::State &state) {
-  BenchmarkAllocator bench;
   const int requests_per_iteration = state.range(0);
   std::vector<void *> request_buffers;
   std::vector<void *> response_buffers;
@@ -192,10 +210,8 @@ static void BM_WebServerSimulation(benchmark::State &state) {
     response_sizes.push_back(response_size_dist(gen));
   }
 
-  std::cout << "total allocation: " << std::accumulate(request_sizes.begin(), request_sizes.end(), 0) + std::accumulate(response_sizes.begin(), response_sizes.end(), 0)<< std::endl;
-
   for (auto _ : state) {
-    // memset(bench.raw_buffer, 0x0, 1024*1024);
+    BenchmarkAllocator bench(((1024 + 8192) * requests_per_iteration) * 0.4);
     // dp_init(&bench.allocator, bench.raw_buffer, BenchmarkAllocator::BUFFER_SIZE);
     for (int i = 0; i < requests_per_iteration; i++) {
       // Allocate request buffer
@@ -218,9 +234,7 @@ static void BM_WebServerSimulation(benchmark::State &state) {
 
       // Simulate processing by occasionally holding onto buffers
       if (i % 3 != 0) {
-        // std::cout << "freeing request" << std::endl;
         dp_free(&bench.allocator, request_buffers.back());
-        // std::cout << "freeing response" << std::endl;
         dp_free(&bench.allocator, response_buffers.back());
         request_buffers.pop_back();
         response_buffers.pop_back();
@@ -228,16 +242,12 @@ static void BM_WebServerSimulation(benchmark::State &state) {
     }
 
     // Cleanup remaining buffers
-    // std::cout << "cleaning requests" << std::endl;
     for (auto ptr : request_buffers)
       dp_free(&bench.allocator, ptr);
-    // std::cout << "cleaning responses" << std::endl;
     for (auto ptr : response_buffers)
       dp_free(&bench.allocator, ptr);
     request_buffers.clear();
     response_buffers.clear();
-
-    std::cout << "available at end: " << bench.allocator.available << std::endl;
   }
 
   state.SetItemsProcessed(state.iterations() * requests_per_iteration * 2);

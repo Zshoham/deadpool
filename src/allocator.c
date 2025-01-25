@@ -51,7 +51,8 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   size_t min_fit = UINTPTR_MAX;
 
   do {
-    size_t fit = current->size - size;
+    // we have a check after the loop to catch underflows.
+    size_t fit = current->size - required_size;
     if (fit == 0) {
       min_fit = 0;
       break;
@@ -68,22 +69,45 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   if (min_fit > best_fit->size)
     return NULL;
 
-  if (prev_best_fit) {
-    prev_best_fit->next = best_fit->next;
+  // HOW DOES best_fit get the value 0xffffffffffffffff ??
+  if (best_fit->next == (block_header*)UINTPTR_MAX){
+    best_fit->next = NULL;
   }
 
-  if (min_fit > sizeof(size_t) * 2) {
-    block_header *new_free_head =
-        (block_header *)((uint8_t *)best_fit + required_size);
-    new_free_head->next = allocator->free_list_head->next;
-    new_free_head->size = best_fit->size - required_size;
-    new_free_head->is_free = true;
-    allocator->free_list_head = new_free_head;
+  if (min_fit == 0) {
+    if (best_fit == allocator->free_list_head) {
+      allocator->free_list_head = best_fit->next;
+    } else {
+      prev_best_fit->next = best_fit->next;
+    }
+  } else {
+    block_header *new_best_fit =
+          (block_header *)((uint8_t *)best_fit + required_size);
+    new_best_fit->size = best_fit->size - required_size;
+    new_best_fit->is_free = true;
+    new_best_fit->next = best_fit->next;
+    if (best_fit == allocator->free_list_head) {
+      allocator->free_list_head = new_best_fit;
+    } else {
+      prev_best_fit->next = new_best_fit;
+    }
   }
+
+  // if (prev_best_fit) {
+  //   prev_best_fit->next = best_fit->next;
+  // } else {
+  //   block_header *new_free_head =
+  //       (block_header *)((uint8_t *)best_fit + required_size);
+  //   new_free_head->next = allocator->free_list_head->next;
+  //   new_free_head->size = best_fit->size - required_size;
+  //   new_free_head->is_free = true;
+  //   allocator->free_list_head = new_free_head;
+  // }
 
   best_fit->size = size;
   best_fit->is_free = false;
-  allocator->available -= best_fit->size + sizeof(block_header);
+  // best_fit->next = (block_header*)UINTPTR_MAX;
+  allocator->available -= required_size;
   return (uint8_t *)best_fit + sizeof(block_header);
 }
 
@@ -175,7 +199,6 @@ static bool try_coalsce(dp_alloc *allocator, block_header *free_block) {
     if (coalsed >= 2)
       return true;
 
-
     if (update_prev)
       prev = current;
     else
@@ -186,28 +209,35 @@ static bool try_coalsce(dp_alloc *allocator, block_header *free_block) {
   return coalsed > 0;
 }
 
-void dp_free(dp_alloc *allocator, void *ptr) {
+int dp_free(dp_alloc *allocator, void *ptr) {
   if (ptr == NULL || allocator == NULL) {
-    return;
+    return 0;
   }
 
   block_header *to_free =
       (block_header *)((uint8_t *)ptr - sizeof(block_header));
 
+  // if (to_free->next != (block_header*)UINTPTR_MAX) {
+  //   fprintf(stderr, "Error: trying to free %p which is not a valid block\n", ptr);
+  //   return 1;
+  // }
   if ((uint8_t *)to_free < allocator->buffer ||
       (uint8_t *)to_free >= allocator->buffer + allocator->buffer_size) {
     fprintf(stderr, "Error: Deallocating invalid pointer %p\n", ptr);
-    return; // Invalid pointer
+    return 1; // Invalid pointer
   }
   if (to_free->is_free) {
     fprintf(stderr, "Error: Double free detected for pointer %p\n", ptr);
-    return; // Double free
+    return 1; // Double free
   }
 
   to_free->is_free = true;
   allocator->available += to_free->size;
-  if (!try_coalsce(allocator, to_free)) {
-    to_free->next = allocator->free_list_head;
-    allocator->free_list_head = to_free;
-  }
+  to_free->next = allocator->free_list_head;
+  allocator->free_list_head = to_free;
+
+  // if (!try_coalsce(allocator, to_free)) {
+  // }
+  //
+  return 0;
 }

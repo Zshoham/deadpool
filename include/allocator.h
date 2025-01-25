@@ -24,7 +24,7 @@ typedef struct dp_alloc {
 
 bool dp_init(dp_alloc* allocator, void* buffer, size_t buffer_size);
 void* dp_malloc(dp_alloc* allocator, size_t size);
-void dp_free(dp_alloc* allocator, void* ptr);
+int dp_free(dp_alloc* allocator, void* ptr);
 
 #ifdef __cplusplus
 }
