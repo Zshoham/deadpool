@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <ios>
 #include <numeric>
 #include <ostream>
 #include <random>
@@ -131,8 +132,7 @@ static void BM_ExtremeStress(benchmark::State &state) {
   const int operations = state.range(0);
   std::vector<std::pair<void *, size_t>> allocations;
   std::unordered_set<void*> alloc_set;
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  std::mt19937 gen(23849);
   std::uniform_int_distribution<> size_dist(1, 1024); // 1B to 1KB
   std::uniform_real_distribution<> action_dist(0.0, 1.0);
 
@@ -141,10 +141,12 @@ static void BM_ExtremeStress(benchmark::State &state) {
     size_t total_allocated = 0;
 
     for (int i = 0; i < operations; i++) {
+      std::cerr << "Bench: starting new loop" << std::endl;
       double action = action_dist(gen);
       // 70% chance to allocate if under 900KB
       // if ((total_allocated < 800*1024 || action < 0.7) && total_allocated < 980 * 1024) {
       if (action < 0.7 && total_allocated < 900 * 1024) {
+        std::cerr << "Bench: allocating..." << std::endl;
         size_t size = size_dist(gen);
         void *ptr = dp_malloc(&bench.allocator, size);
         if (ptr) {
@@ -153,29 +155,45 @@ static void BM_ExtremeStress(benchmark::State &state) {
           benchmark::DoNotOptimize(ptr);
           allocations.push_back({ptr, size});
           if (alloc_set.contains(ptr)) {
-            state.SkipWithError("Alloced the same pointer again ??");
-            benchmark::DoNotOptimize(ptr);
-            std::cout << "Why do you do this ??" << i << std::endl;
+            std::cerr << "Bench(Error): allocated the same pointer again... (" << i << ")" << std::endl;
             exit(1);
           }
           alloc_set.insert(ptr);
           total_allocated += size;
         } else {
-          state.SkipWithError("Cant alloc");
+          std::cerr << "Bench(Error): alllocation failed" << std::endl;
         }
       } else if (!allocations.empty()) {
+        std::cerr << "Bench: freeing..." << std::endl;
         // Free random allocation
         size_t index = gen() % allocations.size();
         if (dp_free(&bench.allocator, allocations[index].first) != 0) {
-          state.SkipWithError("Cant free" + std::to_string(i));
+          std::cerr << "Bench(Error): failed free" << std::endl;
+          std::cerr << "Bench(Error): " << allocations[index].first << " in set ? " << std::boolalpha << alloc_set.contains(allocations[index].first) << std::endl;
         }
         total_allocated -= allocations[index].second;
         alloc_set.erase(allocations[index].first);
         allocations.erase(allocations.begin() + index);
       }
+      std::cerr << "Bench: finished loop validating pointers" << std::endl;
+      for (auto ptr : allocations) {
+
+        block_header *blk =
+            (block_header *)((uint8_t *)ptr.first - sizeof(block_header));
+        if (blk->size > 1024) {
+          std::cerr << "Bench(Error): block " << blk << " has size=" << blk->size << std::endl;
+        }
+        if (blk->next != (block_header*)UINTPTR_MAX) {
+          std::cerr << "Bench(Error) block " << blk << " is no longer valid..." << std::endl;
+        }
+        if (blk->is_free == true) {
+          std::cerr << "Bench(Error) block " << blk << " is free?..." << std::endl;
+        }
+      }
     }
 
     // Cleanup remaining allocations
+    std::cerr << "Bench: freeing remaining pointers" << std::endl;
     for (auto &alloc : allocations) {
       dp_free(&bench.allocator, alloc.first);
     }

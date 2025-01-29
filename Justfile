@@ -12,6 +12,11 @@ coverage: (test "ON")
   mkdir -p build/cover
   gcovr --html-details --output build/cover/report.html
 
+benchmark:
+  cmake -B build .
+  cmake --build ./build --target allocator_benchmark
+  ./build/bench/allocator_benchmark
+ 
 fuzz:
   just clean
   CXX=clang CC=clang cmake -B build -DCMAKE_BUILD_TYPE=Debug .
