@@ -1,4 +1,3 @@
-#include <cstdlib>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -68,11 +67,8 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   if (min_fit > best_fit->size)
     return NULL;
 
-  // HOW DOES best_fit get the value 0xffffffffffffffff ??
-  // if (best_fit == (block_header*)UINTPTR_MAX){
-  //   best_fit = NULL;
-  // }
-  fprintf(stderr, "Info: trying to allocate bf=%p, sz=%zu bfn=%p hd=%p\n", best_fit, best_fit->size, best_fit->next, allocator->free_list_head);
+  // fprintf(stderr, "Info: trying to allocate bf=%p, sz=%zu bfn=%p hd=%p\n",
+  //         best_fit, best_fit->size, best_fit->next, allocator->free_list_head);
 
   if (min_fit < sizeof(block_header)) {
     if (best_fit == allocator->free_list_head) {
@@ -83,8 +79,8 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   } else {
     // TODO: need to make sure we actually have enough space for this.
     block_header *new_best_fit =
-          (block_header *)((uint8_t *)best_fit + required_size);
-    fprintf(stderr, "Info: rearanging stuff nbf=%p\n", new_best_fit);
+        (block_header *)((uint8_t *)best_fit + required_size);
+    // fprintf(stderr, "Info: rearanging stuff nbf=%p\n", new_best_fit);
     new_best_fit->size = best_fit->size - required_size;
     new_best_fit->is_free = true;
     new_best_fit->next = best_fit->next;
@@ -108,184 +104,74 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
 
   best_fit->size = size;
   best_fit->is_free = false;
-  best_fit->next = (block_header*)UINTPTR_MAX;
+  best_fit->next = (block_header *)UINTPTR_MAX;
   allocator->available -= required_size;
-  fprintf(stderr, "Info: allocated block at %p (sz=%zu, hd=%p)\n", best_fit, best_fit->size, allocator->free_list_head);
-  return (uint8_t*)best_fit + sizeof(block_header);
+  // fprintf(stderr, "Info: allocated block at %p (sz=%zu, hd=%p)\n", best_fit,
+          // best_fit->size, allocator->free_list_head);
+  return (uint8_t *)best_fit + sizeof(block_header);
 }
 
-// void join(block_header *left, block_header *right) {
-//   left->size += right->size + sizeof(block_header);
-//   left->next = right->next;
-// }
-
-// static void coalsce(dp_alloc *allocator, block_header *free_block) {
-//   // free_list_head is free_block so we always want to start with
-//   // the next one.
-//   block_header *current = allocator->free_list_head->next;
-//   block_header *prev = NULL;
-//   // This is only relevant if both adjacent physical blocks are
-//   // free. and then it keeps track of the prev block of free_block
-//   // after the first join in order to update it if needed.
-//   block_header *free_block_prev = NULL;
-//
-//   while (current != NULL) {
-//     if (next_phys(free_block) == current) {
-//       join(free_block, current);
-//       allocator->available += sizeof(block_header);
-//       if (free_block_prev) {
-//         prev->next = current->next;
-//         // This is the second block we join with to_free,
-//         // it means that we had a free block on both sides,
-//         // of the original to_free and we merged them all.
-//         // so there is nothing more we can do.
-//         break;
-//       }
-//       free_block_prev = prev;
-//     }
-//
-//     if (next_phys(current) == free_block) {
-//       join(current, free_block);
-//       allocator->available += sizeof(block_header);
-//       free_block = current;
-//       if (free_block_prev) {
-//         prev->next = current->next;
-//         // to_free is already part of the list.
-//         // because it was coalesced with another
-//         // block before.
-//         free_block_prev->next = free_block;
-//         // like before this this means that we merged the two
-//         // adjacent blocks to the original to_free into it,
-//         // so there is nothing more to do.
-//         break;
-//       }
-//       free_block_prev = prev;
-//     }
-//     // if (prev)
-//     //   prev->next = free_block;
-//     // else
-//     //   allocator->free_list_head = free_block;
-//
-//     prev = current;
-//     current = current->next;
-//   }
-// }
-
-static bool try_coalsce_1(dp_alloc *allocator, block_header *free_block) {
+static block_header* coalsce(dp_alloc *allocator, block_header *free_block) {
   block_header *current = allocator->free_list_head;
   block_header *prev = NULL;
+  block_header *to_coalsce_left = NULL;
+  block_header *to_coalsce_right = NULL;
 
   while (current != NULL) {
     if (next_phys(allocator, free_block) == current) {
-      fprintf(stderr, "Info: coalscing(left) (free) %p-%p with %p-%p\n", free_block, current, current, next_phys(allocator, current));
-      current->size += free_block->size + sizeof(block_header);
-      allocator->available += free_block->size + sizeof(block_header);
-      *free_block = *current;
-      if (prev)
-        prev->next = free_block;
-      if (allocator->free_list_head == current)
-        allocator->free_list_head = free_block;
-
-      return true;
+      // fprintf(stderr, "Info: coalscing(left) (free) %p-%p with %p-%p\n",
+      //         free_block, current, current, next_phys(allocator, current));
+      to_coalsce_right = current;
+      if (current == allocator->free_list_head){
+        allocator->free_list_head = to_coalsce_right->next;
+      }
+      else {
+        prev->next = to_coalsce_right->next;
+      }
+      current = to_coalsce_right->next;
+      to_coalsce_right->next = (block_header*)UINTPTR_MAX;
+      if (to_coalsce_left)
+        break;
+      else
+        continue;
     }
     if (next_phys(allocator, current) == free_block) {
-      fprintf(stderr, "Info: coalscing(right) (free) %p-%p with %p-%p\n", free_block, next_phys(allocator, free_block), current, free_block);
-      current->size += free_block->size + sizeof(block_header);
-      allocator->available += free_block->size + sizeof(block_header);
-      free_block = current;
-      return true;
+      // fprintf(stderr, "Info: coalscing(right) (free) %p-%p with %p-%p\n",
+      //         free_block, next_phys(allocator, free_block), current,
+      //         free_block);
+      to_coalsce_left = current;
+      if (current == allocator->free_list_head) {
+        allocator->free_list_head = to_coalsce_left->next;
+      }
+      else {
+        prev->next = to_coalsce_left->next;
+      }
+      current = to_coalsce_left->next;
+      to_coalsce_left->next = (block_header*)UINTPTR_MAX;
+      if (to_coalsce_right)
+        break;
+      else
+        continue;
     }
 
     prev = current;
     current = current->next;
   }
 
-  return false;
-}
+  if (to_coalsce_left == NULL && to_coalsce_right == NULL)
+    return free_block;
 
-static void try_coalsce_2(dp_alloc *allocator, block_header *free_block, block_header *free_prev, block_header *start) {
-  block_header *current = start;
-  block_header *prev = NULL;
-
-  while (current != NULL) {
-    if (next_phys(allocator, free_block) == current) {
-      fprintf(stderr, "Info: coalscing(left) (free) %p-%p with %p-%p\n", free_block, current, current, next_phys(allocator, current));
-      current->size += free_block->size + sizeof(block_header);
-      allocator->available += free_block->size + sizeof(block_header);
-      *free_block = *current;
-      if (prev)
-        prev->next = free_block;
-      if (allocator->free_list_head == current)
-        allocator->free_list_head = free_block;
-      return;
-    }
-    if (next_phys(allocator, current) == free_block) {
-      fprintf(stderr, "Info: coalscing(right) (free) %p-%p with %p-%p\n", free_block, next_phys(allocator, free_block), current, free_block);
-      current->size += free_block->size + sizeof(block_header);
-      allocator->available += free_block->size + sizeof(block_header);
-      free_block = current;
-      if (free_prev)
-        free_prev->next = current;
-
-      return;
-    }
-
-    prev = current;
-    current = current->next;
-  }
-}
-
-static bool try_coalsce(dp_alloc *allocator, block_header *free_block) {
-  block_header *current = allocator->free_list_head;
-  block_header *prev = NULL;
-  block_header *free_block_prev = NULL;
-
-  int coalsed = 0;
-  bool update_prev = true;
-  while (current != NULL) {
-    if (next_phys(allocator, free_block) == current) {
-      fprintf(stderr, "Info: coalscing(left) (free) %p-%p with %p-%p\n", free_block, current, current, next_phys(allocator, current));
-      current->size += free_block->size + sizeof(block_header);
-      allocator->available += free_block->size + sizeof(block_header);
-      *free_block = *current;
-      if (free_block_prev) {
-        // HOW ?
-      }
-      coalsed++;
-      if (prev) {
-        prev->next = free_block;
-        free_block_prev = prev;
-      }
-      if (allocator->free_list_head == current)
-        allocator->free_list_head = free_block;
-
-      update_prev = false;
-    }
-    if (next_phys(allocator, current) == free_block) {
-      fprintf(stderr, "Info: coalscing(right) (free) %p-%p with %p-%p\n", free_block, next_phys(allocator, free_block), current, free_block);
-      current->size += free_block->size + sizeof(block_header);
-      allocator->available += free_block->size + sizeof(block_header);
-      free_block = current;
-      if (free_block_prev) {
-        free_block_prev->next = current;
-        return true;
-      }
-      free_block_prev = prev;
-      coalsed++;
-      update_prev = false;
-    }
-
-    if (coalsed >= 2)
-      return true;
-
-    if (update_prev)
-      prev = current;
-    else
-      update_prev = true;
-    current = current->next;
+  if (to_coalsce_left != NULL) {
+    to_coalsce_left->size += sizeof(block_header) + free_block->size;
+    free_block = to_coalsce_left;
   }
 
-  return coalsed > 0;
+  if (to_coalsce_right != NULL) {
+    free_block->size += sizeof(block_header) + to_coalsce_right->size;
+  }
+
+  // fprintf(stderr, "Info: Successfull coalscence\n");
+  return free_block;
 }
 
 int dp_free(dp_alloc *allocator, void *ptr) {
@@ -296,9 +182,10 @@ int dp_free(dp_alloc *allocator, void *ptr) {
   block_header *to_free =
       (block_header *)((uint8_t *)ptr - sizeof(block_header));
 
-  fprintf(stderr, "Info: Freeing block at %p\n", to_free);
-  if (to_free->next != (block_header*)UINTPTR_MAX) {
-    fprintf(stderr, "Error: trying to free %p which is not a valid block\n", to_free);
+  // fprintf(stderr, "Info: Freeing block at %p\n", to_free);
+  if (to_free->next != (block_header *)UINTPTR_MAX) {
+    fprintf(stderr, "Error: trying to free %p which is not a valid block\n",
+            to_free);
     return 1;
   }
   if ((uint8_t *)to_free < allocator->buffer ||
@@ -312,21 +199,32 @@ int dp_free(dp_alloc *allocator, void *ptr) {
     return 1; // Double free
   }
 
-  if (!try_coalsce(allocator, to_free)) {
-    to_free->is_free = true;
-    allocator->available += to_free->size;
-    to_free->next = allocator->free_list_head;
-    allocator->free_list_head = to_free;
-  }
-  
-  block_header *current = allocator->free_list_head;
-  while (current != NULL) {
-    if (current == to_free) {
-      fprintf(stderr, "Info: found block %p in free list after it was freed\n", to_free);
-    }
-    current = current->next;
-  }
+  to_free = coalsce(allocator, to_free);
+  to_free->is_free = true;
+  allocator->available += to_free->size;
+  to_free->next = allocator->free_list_head;
+  allocator->free_list_head = to_free;
 
-  fprintf(stderr, "Info: freed block at %p\n", to_free);
+  // fprintf(stderr, "Info: free Successfull now  checking for errors\n");
+  // block_header *current = allocator->free_list_head;
+  // uint32_t circle_lengh = 0;
+  // while (current != NULL) {
+  //   // if (current == to_free) {
+  //   //   fprintf(stderr, "Error: found block %p in free list after it was freed\n",
+  //   //           to_free);
+  //   // }
+  //   if (current == (block_header*)UINTPTR_MAX) {
+  //     fprintf(stderr, "Error: free list is corrupted after freeing %p\n", to_free);
+  //   }
+  //
+  //   current = current->next;
+  //   circle_lengh += 1;
+  //   if (current == allocator->free_list_head) {
+  //     fprintf(stderr, "Error: free list is cirular, with length %u.\n", circle_lengh);
+  //     return 1;
+  //   }
+  // }
+
+  // fprintf(stderr, "Info: freed block at %p, free list has %u blocks\n", to_free, circle_lengh);
   return 0;
 }

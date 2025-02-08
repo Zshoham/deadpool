@@ -141,12 +141,12 @@ static void BM_ExtremeStress(benchmark::State &state) {
     size_t total_allocated = 0;
 
     for (int i = 0; i < operations; i++) {
-      std::cerr << "Bench: starting new loop" << std::endl;
+      // std::cerr << "Bench: starting new loop" << std::endl;
       double action = action_dist(gen);
       // 70% chance to allocate if under 900KB
       // if ((total_allocated < 800*1024 || action < 0.7) && total_allocated < 980 * 1024) {
       if (action < 0.7 && total_allocated < 900 * 1024) {
-        std::cerr << "Bench: allocating..." << std::endl;
+        // std::cerr << "Bench: allocating..." << std::endl;
         size_t size = size_dist(gen);
         void *ptr = dp_malloc(&bench.allocator, size);
         if (ptr) {
@@ -161,10 +161,10 @@ static void BM_ExtremeStress(benchmark::State &state) {
           alloc_set.insert(ptr);
           total_allocated += size;
         } else {
-          std::cerr << "Bench(Error): alllocation failed" << std::endl;
+          // std::cerr << "Bench(Error): alllocation failed" << std::endl;
         }
       } else if (!allocations.empty()) {
-        std::cerr << "Bench: freeing..." << std::endl;
+        // std::cerr << "Bench: freeing..." << std::endl;
         // Free random allocation
         size_t index = gen() % allocations.size();
         if (dp_free(&bench.allocator, allocations[index].first) != 0) {
@@ -175,7 +175,7 @@ static void BM_ExtremeStress(benchmark::State &state) {
         alloc_set.erase(allocations[index].first);
         allocations.erase(allocations.begin() + index);
       }
-      std::cerr << "Bench: finished loop validating pointers" << std::endl;
+      // std::cerr << "Bench: finished loop validating pointers" << std::endl;
       for (auto ptr : allocations) {
 
         block_header *blk =
@@ -193,7 +193,7 @@ static void BM_ExtremeStress(benchmark::State &state) {
     }
 
     // Cleanup remaining allocations
-    std::cerr << "Bench: freeing remaining pointers" << std::endl;
+    // std::cerr << "Bench: freeing remaining pointers" << std::endl;
     for (auto &alloc : allocations) {
       dp_free(&bench.allocator, alloc.first);
     }
@@ -229,7 +229,7 @@ static void BM_WebServerSimulation(benchmark::State &state) {
   }
 
   for (auto _ : state) {
-    BenchmarkAllocator bench(((1024 + 8192) * requests_per_iteration) * 0.4);
+    BenchmarkAllocator bench(((1024 + 8192) * requests_per_iteration) * 0.5);
     // dp_init(&bench.allocator, bench.raw_buffer, BenchmarkAllocator::BUFFER_SIZE);
     for (int i = 0; i < requests_per_iteration; i++) {
       // Allocate request buffer
