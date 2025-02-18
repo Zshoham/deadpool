@@ -24,6 +24,9 @@ target_include_directories(allocator PUBLIC
 install(TARGETS allocator DESTINATION lib)
 install(FILES allocator.h DESTINATION include)
 
+add_subdirectory(external/googletest)
+add_subdirectory(external/benchmark)
+
 # Add subdirectories for source, tests, and benchmarks
 add_subdirectory(test)
 add_subdirectory(bench)
