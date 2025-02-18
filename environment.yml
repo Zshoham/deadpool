@@ -4,8 +4,6 @@ channels:
   - defaults
 dependencies:
   - cmake
-  - gtest
-  - benchmark
   - compilers
   - llvm
   - clang
