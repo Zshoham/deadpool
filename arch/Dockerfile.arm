@@ -1,0 +1,8 @@
+FROM ubuntu:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update -y update && apt upgrade -y \
+  apt install -y gcc-arm-linux-gnueabihf \
+  qemu-user-static
+
