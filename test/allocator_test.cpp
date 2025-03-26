@@ -1,6 +1,7 @@
 #include "allocator.h"
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <gtest/gtest.h>
@@ -11,31 +12,72 @@ protected:
   static constexpr size_t BUFFER_SIZE = 1024;
   std::array<uint8_t, BUFFER_SIZE> buffer;
   dp_alloc allocator;
+  std::vector<void*> allocated;
+  size_t total_allocated;
 
   void SetUp() override {
     buffer.fill(0);
+    total_allocated = 0;
     dp_init(&allocator, buffer.data(), BUFFER_SIZE);
+  }
+
+  size_t available() {
+    return BUFFER_SIZE - sizeof(block_header) - total_allocated;
+  }
+
+  void checked_alloc(size_t alloc_size) {
+    void *ptr = dp_malloc(&allocator, alloc_size);
+    total_allocated += alloc_size + sizeof(block_header);
+    ASSERT_NE(nullptr, ptr);
+    ASSERT_NE(allocator.free_list_head, nullptr);
+    EXPECT_TRUE(allocator.free_list_head->is_free);
+    ASSERT_GE(allocator.available, available());
+
+  }
+
+  void TearDown() override {
+    for (auto ptr : allocated) {
+      dp_free(&allocator, ptr);
+    }
+ 
   }
 };
 
 // Basic Allocation Tests
 TEST_F(DPAllocatorTest, SingleAllocation) {
-  void *ptr = dp_malloc(&allocator, 100);
-  ASSERT_NE(nullptr, ptr);
-  EXPECT_GE(allocator.available, BUFFER_SIZE - 100 - 2 * sizeof(block_header));
+  checked_alloc(100);
+  // size_t alloc_size = 100;
+  // void *ptr = dp_malloc(&allocator, alloc_size);
+  // ASSERT_NE(nullptr, ptr);
+  // ASSERT_NE(allocator.free_list_head, nullptr);
+  // EXPECT_TRUE(allocator.free_list_head->is_free);
+  //
+  // size_t available_size = BUFFER_SIZE - alloc_size - 2 * sizeof(block_header);
+  //
+  // EXPECT_GE(allocator.available, available_size);
+  // EXPECT_GE(allocator.free_list_head->size, available_size);
+  //
+  // dp_free(&allocator, ptr);
 }
 
 TEST_F(DPAllocatorTest, MultipleAllocations) {
   std::vector<void *> ptrs;
+  size_t allocated_size = 0;
   for (int i = 0; i < 5; i++) {
     void *ptr = dp_malloc(&allocator, 100);
+    allocated_size += 100 + sizeof(block_header);
     ASSERT_NE(nullptr, ptr);
+    ASSERT_GE(allocator.available, BUFFER_SIZE - sizeof(block_header) - allocated_size);
     ptrs.push_back(ptr);
   }
 
   // Verify all pointers are different
   std::sort(ptrs.begin(), ptrs.end());
   EXPECT_EQ(ptrs.end(), std::adjacent_find(ptrs.begin(), ptrs.end()));
+
+  for (auto ptr : ptrs) {
+    dp_free(&allocator, ptr);
+  }
 }
 
 // Fragmentation Tests
