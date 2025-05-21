@@ -22,7 +22,7 @@ target_include_directories(allocator PUBLIC
 )
 
 install(TARGETS allocator DESTINATION lib)
-install(FILES allocator.h DESTINATION include)
+install(FILES include/allocator.h DESTINATION include)
 
 add_subdirectory(external/googletest)
 add_subdirectory(external/benchmark)

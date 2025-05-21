@@ -1,4 +1,17 @@
-// Type your code here, or load an example.
+// Experimental file for testing and comparing Count Leading Zeros (CLZ) implementations.
+// This file includes:
+//   - A generic C implementation using GCC/Clang builtins (`__builtin_clzll`).
+//   - An ARM NEON intrinsic-based implementation (`vclzq_u32`).
+//
+// Note:
+//   - The code is specific to ARM architecture (due to arm_neon.h) and
+//     compilers supporting GCC builtins (GCC, Clang).
+//   - This file is not part of the main CMake build process and is intended for
+//     standalone testing or experimentation.
+//   - The `v_clz` NEON function appears to be incomplete or contains a bug,
+//     as it calculates leading zero counts but then returns the minimum of the
+//     original input values, not the leading zero counts.
+
 #include <stdio.h>
 #include <stddef.h>
 #include <math.h>
