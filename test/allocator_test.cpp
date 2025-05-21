@@ -27,7 +27,7 @@ protected:
       // For double free tests, dp_free will return an error, but we don't check return here.
       dp_free(&allocator, ptr);
     }
-    allocated.clear();
+    // allocated is cleared in SetUp() for each test to ensure a clean state.
   }
 };
 
