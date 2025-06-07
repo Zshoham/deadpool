@@ -62,3 +62,7 @@ _deps
 
 .cache/
 build/
+
+# pixi environments
+.pixi
+*.egg-info
