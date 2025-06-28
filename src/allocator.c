@@ -89,6 +89,7 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
     } else {
       prev_best_fit->next = new_best_fit;
     }
+    allocator->available -= sizeof(block_header);
   }
 
   // if (prev_best_fit) {
@@ -104,10 +105,11 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
 
   best_fit->size = size;
   best_fit->is_free = false;
-  best_fit->next = (block_header *)UINTPTR_MAX;
-  allocator->available -= required_size;
-  // fprintf(stderr, "Info: allocated block at %p (sz=%zu, hd=%p)\n", best_fit,
-          // best_fit->size, allocator->free_list_head);
+  // best_fit->next = (block_header *)UINTPTR_MAX;
+  best_fit->next = NULL;
+  allocator->available -= size;
+  fprintf(stderr, "Info: allocated block at %p (sz=%zu, hd=%p, avl=%zu)\n", best_fit,
+          best_fit->size, allocator->free_list_head, allocator->available);
   return (uint8_t *)best_fit + sizeof(block_header);
 }
 
@@ -129,7 +131,8 @@ static block_header* coalsce(dp_alloc *allocator, block_header *free_block) {
         prev->next = to_coalsce_right->next;
       }
       current = to_coalsce_right->next;
-      to_coalsce_right->next = (block_header*)UINTPTR_MAX;
+      // to_coalsce_right->next = (block_header*)UINTPTR_MAX;
+      to_coalsce_right->next = NULL;
       if (to_coalsce_left)
         break;
       else
@@ -147,7 +150,8 @@ static block_header* coalsce(dp_alloc *allocator, block_header *free_block) {
         prev->next = to_coalsce_left->next;
       }
       current = to_coalsce_left->next;
-      to_coalsce_left->next = (block_header*)UINTPTR_MAX;
+      // to_coalsce_left->next = (block_header*)UINTPTR_MAX;
+      to_coalsce_left->next = NULL;
       if (to_coalsce_right)
         break;
       else
@@ -162,28 +166,33 @@ static block_header* coalsce(dp_alloc *allocator, block_header *free_block) {
     return free_block;
 
   if (to_coalsce_left != NULL) {
+    fprintf(stderr, "Info: Coalscing left (cb=%zu, fb=%zu, avl=%zu)\n", to_coalsce_left->size, free_block->size, allocator->available);
     to_coalsce_left->size += sizeof(block_header) + free_block->size;
+    allocator->available += sizeof(block_header);
     free_block = to_coalsce_left;
   }
 
   if (to_coalsce_right != NULL) {
+    fprintf(stderr, "Info: Coalscing left (fb=%zu, cb=%zu, avl=%zu)\n", free_block->size, to_coalsce_right->size, allocator->available);
     free_block->size += sizeof(block_header) + to_coalsce_right->size;
+    allocator->available += sizeof(block_header);
   }
 
-  // fprintf(stderr, "Info: Successfull coalscence\n");
+  fprintf(stderr, "Info: Successfull coalscence (avl=%zu)\n", allocator->available);
   return free_block;
 }
 
 int dp_free(dp_alloc *allocator, void *ptr) {
   if (ptr == NULL || allocator == NULL) {
-    return 0;
+    fprintf(stderr, "Error: trying to free null pointer, or with null allocator.");
+    return 1;
   }
 
   block_header *to_free =
       (block_header *)((uint8_t *)ptr - sizeof(block_header));
 
-  // fprintf(stderr, "Info: Freeing block at %p\n", to_free);
-  if (to_free->next != (block_header *)UINTPTR_MAX) {
+  // if (to_free->next != (block_header *)UINTPTR_MAX) {
+  if (to_free->next != NULL) {
     fprintf(stderr, "Error: trying to free %p which is not a valid block\n",
             to_free);
     return 1;
@@ -199,9 +208,10 @@ int dp_free(dp_alloc *allocator, void *ptr) {
     return 1; // Double free
   }
 
-  to_free = coalsce(allocator, to_free);
-  to_free->is_free = true;
   allocator->available += to_free->size;
+  to_free->is_free = true;
+  fprintf(stderr, "Info: freeing block at %p (ptr=%p)\n", to_free, ptr);
+  to_free = coalsce(allocator, to_free);
   to_free->next = allocator->free_list_head;
   allocator->free_list_head = to_free;
 
