@@ -93,35 +93,23 @@ TEST_F(DPAllocatorTest, MultipleAllocations) {
 
 // Fragmentation Tests
 TEST_F(DPAllocatorTest, FragmentationAndCoalescing) {
-  void *ptr1, *ptr2, *ptr3;
+  void *ptr1, *ptr2, *ptr3, *ptr4;
   checked_alloc(100, &ptr1);
-  std::cout << "p1 is " << ptr1 << "\n";
   checked_alloc(100, &ptr2);
-  std::cout << "p2 is " << ptr2 << "\n";
   checked_alloc(100, &ptr3);
-  std::cout << "p3 is " << ptr3 << "\n";
 
   // Create fragmentation by freeing middle block
-  std::cout << "freeing  " << ptr2 << "\n";
   checked_free(ptr2);
-  std::cout << "WTH\n";
 
   // Allocate slightly smaller block - should fit in the gap
-  void *ptr4;
   checked_alloc(100, &ptr4);
   block_header *p4_block =
         (block_header *)((uint8_t *)ptr4 - sizeof(block_header));
 
-  std::cout << "p4->next is " << p4_block->next << "\n";
 
   // Free all blocks
-  std::cout << "Trying to free p1\n";
   checked_free(ptr1);
-  std::cout << "p4->next is " << p4_block->next << "\n";
-  std::cout << "Trying to free p3\n";
   checked_free(ptr3);
-  std::cout << "p4->next is " << p4_block->next << "\n";
-  std::cout << "Trying to free p4\n";
   checked_free(ptr4);
 
   // Should be able to allocate a large block now
@@ -157,31 +145,28 @@ TEST_F(DPAllocatorTest, PointerAlignment) {
 TEST_F(DPAllocatorTest, AlternatingAllocationFreeing) {
   const int NUM_ITERATIONS = 100;
   const size_t ALLOC_SIZE = 16;
+  void *ptr;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    void *ptr = dp_malloc(&allocator, ALLOC_SIZE);
-    ASSERT_NE(nullptr, ptr);
-    dp_free(&allocator, ptr);
+    checked_alloc(ALLOC_SIZE, &ptr);
+    checked_free(ptr);
   }
 }
 
 TEST_F(DPAllocatorTest, RandomizedAllocationsAndFrees) {
-  std::vector<void *> ptrs;
   const int NUM_ALLOCS = 20;
+  void *ptr;
 
   // Random allocations
   for (int i = 0; i < NUM_ALLOCS; i++) {
     size_t size = rand() % 64 + 1; // Random size between 1 and 64
-    void *ptr = dp_malloc(&allocator, size);
-    if (ptr)
-      ptrs.push_back(ptr);
+    checked_alloc(size, &ptr);
   }
 
   // Random frees
-  while (!ptrs.empty()) {
-    size_t index = rand() % ptrs.size();
-    dp_free(&allocator, ptrs[index]);
-    ptrs.erase(ptrs.begin() + index);
+  while (!allocated.empty()) {
+    size_t index = rand() % allocated.size();
+    checked_free(allocated[index].ptr);
   }
 }
 
