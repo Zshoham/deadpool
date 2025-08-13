@@ -38,6 +38,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/gxx_linux-64-13.3.0-hb14504d_11.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-75.1-he02047a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/jinja2-3.1.6-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/just-1.42.4-hdab8a38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/kernel-headers_linux-64-3.10.0-he073ed8_18.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/keyutils-1.6.1-h166bdaf_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/krb5-1.21.3-h659f571_0.conda
@@ -472,6 +473,17 @@ packages:
   license_family: BSD
   size: 112714
   timestamp: 1741263433881
+- conda: https://conda.anaconda.org/conda-forge/linux-64/just-1.42.4-hdab8a38_0.conda
+  sha256: 67ce053b821b3fb8878deaed239a299a9a599ff0cec2e70cce21fc52215afd72
+  md5: b601431e2e5e02a27f941211cec88dd4
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  constrains:
+  - __glibc >=2.17
+  license: CC0-1.0
+  size: 1432173
+  timestamp: 1753433231283
 - conda: https://conda.anaconda.org/conda-forge/noarch/kernel-headers_linux-64-3.10.0-he073ed8_18.conda
   sha256: a922841ad80bd7b222502e65c07ecb67e4176c4fa5b03678a005f39fcc98be4b
   md5: ad8527bf134a90e1c9ed35fa0b64318c
