@@ -1,17 +1,50 @@
 #include <algorithm>
 #include <array>
+#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <gtest/gtest.h>
-#include <iostream>
 #include <vector>
 
 #include "allocator.h"
+#include "config_macros.h"
+
+void test_debug(const char *fmt, ...) {
+  printf("DEBUG: ");
+  va_list args;
+  va_start(args, fmt);
+  printf(fmt, args);
+  va_end(args);
+}
+
+void test_info(const char *fmt, ...) {
+  printf("INFO: ");
+  va_list args;
+  va_start(args, fmt);
+  printf(fmt, args);
+  va_end(args);
+}
+
+void test_warning(const char *fmt, ...) {
+  printf("WARNING: ");
+  va_list args;
+  va_start(args, fmt);
+  printf(fmt, args);
+  va_end(args);
+}
+
+void test_error(const char *fmt, ...) {
+  printf("ERROR: ");
+  va_list args;
+  va_start(args, fmt);
+  printf(fmt, args);
+  va_end(args);
+}
 
 class DPAllocatorTest : public ::testing::Test {
 protected:
-  
+
   struct AllocationMetadata {
     void *ptr;
     size_t size;
@@ -32,11 +65,14 @@ protected:
   std::vector<AllocationMetadata> allocated;
   size_t total_allocated;
 
-
   void SetUp() override {
     buffer.fill(0);
     total_allocated = 0;
-    dp_init(&allocator, buffer.data(), BUFFER_SIZE);
+    dp_init(&allocator, buffer.data(), BUFFER_SIZE
+            IF_DP_LOG(,{.debug = test_debug,
+             .info = test_info,
+             .warning = test_warning,
+             .error = test_error}));
   }
 
   size_t available() {

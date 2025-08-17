@@ -5,18 +5,19 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include <config.h>
+#include <config_macros.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #if DP_LOG
+
 typedef struct dp_logger {
-   int (*debug)(const char *fmt, ...);
-   int (*info)(const char *fmt, ...);
-   int (*warning)(const char *fmt, ...);
-   int (*error)(const char *fmt, ...);
+   void (*debug)(const char *fmt, ...);
+   void (*info)(const char *fmt, ...);
+   void (*warning)(const char *fmt, ...);
+   void (*error)(const char *fmt, ...);
 } dp_logger;
 
 #define DP_DEBUG(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
@@ -24,13 +25,11 @@ typedef struct dp_logger {
 #define DP_WARNING(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
 #define DP_ERROR(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
 
-#elif
-#define EMPTY_MACRO do {} while (0)
-
-#define DP_DEBUG(alloc) EMPTY_MACRO
-#define DP_INFO(alloc) EMPTY_MACRO
-#define DP_WARNING(alloc) EMPTY_MACRO
-#define DP_ERROR(alloc) EMPTY_MACRO
+#else
+#define DP_DEBUG(alloc, ...) /*Logging Disabled*/
+#define DP_INFO(alloc, ...) /*Logging Disabled*/
+#define DP_WARNING(alloc, ...) /*Logging Disabled*/
+#define DP_ERROR(alloc, ...) /*Logging Disabled*/
 
 #endif
 
@@ -47,12 +46,10 @@ typedef struct dp_alloc {
     size_t available;
     block_header* free_list_head;
 
-    #if DP_LOG
-    dp_logger logger;
-    #endif
+    IF_DP_LOG(dp_logger logger;)
 } dp_alloc;
 
-bool dp_init(dp_alloc* allocator, void* buffer, size_t buffer_size);
+bool dp_init(dp_alloc* allocator, void* buffer, size_t buffer_size IF_DP_LOG(, dp_logger logger));
 void* dp_malloc(dp_alloc* allocator, size_t size);
 int dp_free(dp_alloc* allocator, void* ptr);
 

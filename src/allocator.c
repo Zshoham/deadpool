@@ -21,13 +21,19 @@ static block_header *next_phys(dp_alloc *allocator, block_header *block) {
                           sizeof(block_header));
 }
 
-bool dp_init(dp_alloc *allocator, void *buffer, size_t buffer_size) {
+bool dp_init(
+  dp_alloc *allocator,
+  void *buffer,
+  size_t buffer_size
+  IF_DP_LOG(, dp_logger logger))
+{
   if (buffer == NULL || buffer_size < sizeof(block_header)) {
     return false;
   }
   allocator->buffer = (uint8_t *)buffer;
   allocator->buffer_size = buffer_size;
   allocator->available = buffer_size - sizeof(block_header);
+  IF_DP_LOG(allocator->logger = logger;)
 
   block_header *header = (block_header *)allocator->buffer;
   header->size = buffer_size - sizeof(block_header);
