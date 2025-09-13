@@ -88,7 +88,7 @@ protected:
     allocated.push_back({*result, alloc_size});
     ASSERT_NE(nullptr, *result);
     ASSERT_NE(allocator.free_list_head, nullptr);
-    EXPECT_TRUE(allocator.free_list_head->is_free);
+    ASSERT_TRUE(allocator.free_list_head->is_free);
     ASSERT_GE(allocator.available, available());
   }
 
@@ -102,7 +102,12 @@ protected:
   }
 
   void TearDown() override {
+    if (::testing::Test::HasFailure()) { 
+      test_warning("Not running teardown checks because the test already failed elsewhere.\n");
+      return;
+    }
     for (auto allocation : allocated) {
+      ASSERT_NE(allocation.ptr, nullptr);
       ASSERT_EQ(dp_free(&allocator, allocation.ptr), 0);
     }
     allocated.clear();
@@ -112,69 +117,69 @@ protected:
 // Basic Allocation Tests
 TEST_F(DPAllocatorTest, SingleAllocation) {
   void *result;
-  checked_alloc(100, &result);
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &result));
 }
 
 TEST_F(DPAllocatorTest, MultipleAllocations) {
   size_t allocated_size = 0;
   void *ptr;
   for (int i = 0; i < 5; i++) {
-    checked_alloc(100, &ptr); 
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &ptr));
   }
 
   // Verify all pointers are different
   std::sort(allocated.begin(), allocated.end());
-  EXPECT_EQ(allocated.end(), std::adjacent_find(allocated.begin(), allocated.end()));
+  ASSERT_EQ(allocated.end(), std::adjacent_find(allocated.begin(), allocated.end()));
 }
 
 // Fragmentation Tests
 TEST_F(DPAllocatorTest, FragmentationAndCoalescing) {
   void *ptr1, *ptr2, *ptr3, *ptr4;
-  checked_alloc(100, &ptr1);
-  checked_alloc(100, &ptr2);
-  checked_alloc(100, &ptr3);
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &ptr1));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &ptr2));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &ptr3));
 
   // Create fragmentation by freeing middle block
-  checked_free(ptr2);
+  ASSERT_NO_FATAL_FAILURE(checked_free(ptr2));
 
   // Allocate slightly smaller block - should fit in the gap
-  checked_alloc(100, &ptr4);
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &ptr4));
   block_header *p4_block =
         (block_header *)((uint8_t *)ptr4 - sizeof(block_header));
 
 
   // Free all blocks
-  checked_free(ptr1);
-  checked_free(ptr3);
-  checked_free(ptr4);
+  ASSERT_NO_FATAL_FAILURE(checked_free(ptr1));
+  ASSERT_NO_FATAL_FAILURE(checked_free(ptr3));
+  ASSERT_NO_FATAL_FAILURE(checked_free(ptr4));
 
   // Should be able to allocate a large block now
   void *large_ptr;
-  checked_alloc(900, &large_ptr);
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(900, &large_ptr));
 }
 
 // Edge Cases
 TEST_F(DPAllocatorTest, ZeroSizeAllocation) {
   void *ptr = dp_malloc(&allocator, 0);
-  EXPECT_EQ(nullptr, ptr);
+  ASSERT_EQ(nullptr, ptr);
 }
 
 TEST_F(DPAllocatorTest, TooLargeAllocation) {
   void *ptr = dp_malloc(&allocator, BUFFER_SIZE + 1);
-  EXPECT_EQ(nullptr, ptr);
+  ASSERT_EQ(nullptr, ptr);
 }
 
 TEST_F(DPAllocatorTest, ExactSizeAllocation) {
   void *ptr = dp_malloc(&allocator, BUFFER_SIZE - 2 * sizeof(block_header));
   ASSERT_NE(nullptr, ptr);
-  EXPECT_EQ(nullptr, dp_malloc(&allocator, 1)); // Should be full
+  ASSERT_EQ(nullptr, dp_malloc(&allocator, 1)); // Should be full
 }
 
 // Alignment Tests
 TEST_F(DPAllocatorTest, PointerAlignment) {
   void *ptr = dp_malloc(&allocator, 1);
   ASSERT_NE(nullptr, ptr);
-  EXPECT_EQ(0, reinterpret_cast<uintptr_t>(ptr) % sizeof(void *));
+  ASSERT_EQ(0, reinterpret_cast<uintptr_t>(ptr) % sizeof(void *));
 }
 
 // Stress Tests
@@ -184,8 +189,8 @@ TEST_F(DPAllocatorTest, AlternatingAllocationFreeing) {
   void *ptr;
 
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    checked_alloc(ALLOC_SIZE, &ptr);
-    checked_free(ptr);
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(ALLOC_SIZE, &ptr));
+    ASSERT_NO_FATAL_FAILURE(checked_free(ptr));
   }
 }
 
@@ -196,13 +201,13 @@ TEST_F(DPAllocatorTest, RandomizedAllocationsAndFrees) {
   // Random allocations
   for (int i = 0; i < NUM_ALLOCS; i++) {
     size_t size = rand() % 64 + 1; // Random size between 1 and 64
-    checked_alloc(size, &ptr);
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(size, &ptr));
   }
 
   // Random frees
   while (!allocated.empty()) {
     size_t index = rand() % allocated.size();
-    checked_free(allocated[index].ptr);
+    ASSERT_NO_FATAL_FAILURE(checked_free(allocated[index].ptr));
   }
 }
 

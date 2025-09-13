@@ -112,6 +112,9 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   //   allocator->free_list_head = new_free_head;
   // }
 
+  // NOTE: why do we need to return a the block metadata to the user ?
+  // we actually just use the size when freeing.
+  // the other metadata can be used to detect bugs, but should not be default...
   best_fit->size = size;
   best_fit->is_free = false;
   // best_fit->next = (block_header *)UINTPTR_MAX;
@@ -230,10 +233,6 @@ int dp_free(dp_alloc *allocator, void *ptr) {
   block_header *current = allocator->free_list_head;
   uint32_t circle_lengh = 0;
   while (current != NULL) {
-    if (current == to_free) {
-      DP_ERROR(allocator, "Found block %p in free list after it was freed\n",
-               to_free);
-    }
     if (current == (block_header *)UINTPTR_MAX) {
       DP_ERROR(allocator, "Free list is corrupted after freeing %p\n", to_free);
     }

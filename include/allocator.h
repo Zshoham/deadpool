@@ -21,9 +21,9 @@ typedef struct dp_logger {
 } dp_logger;
 
 #define DP_DEBUG(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
-#define DP_INFO(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
-#define DP_WARNING(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
-#define DP_ERROR(alloc, ...) do { alloc->logger.debug(__VA_ARGS__); } while (0)
+#define DP_INFO(alloc, ...) do { alloc->logger.info(__VA_ARGS__); } while (0)
+#define DP_WARNING(alloc, ...) do { alloc->logger.warning(__VA_ARGS__); } while (0)
+#define DP_ERROR(alloc, ...) do { alloc->logger.error(__VA_ARGS__); } while (0)
 
 #else
 #define DP_DEBUG(alloc, ...) /*Logging Disabled*/
