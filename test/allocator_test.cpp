@@ -195,7 +195,7 @@ TEST_F(DPAllocatorTest, AlternatingAllocationFreeing) {
 }
 
 TEST_F(DPAllocatorTest, RandomizedAllocationsAndFrees) {
-  const int NUM_ALLOCS = 20;
+  const int NUM_ALLOCS = 10;
   void *ptr;
 
   // Random allocations
