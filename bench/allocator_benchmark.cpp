@@ -1,6 +1,5 @@
 #include <cstdlib>
 #include <ios>
-#include <numeric>
 #include <ostream>
 #include <random>
 #include <unordered_set>
