@@ -2,9 +2,9 @@
 configure:
   cmake -B build .
 
-test coverage="OFF":
-  cmake -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE={{coverage}} .
-  cmake --build ./build --target allocator_test
+test coverage="OFF" *FLAGS:
+  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE={{coverage}} .
+  cmake --build ./build --target allocator_test {{FLAGS}}
   ctest --output-on-failure --test-dir build/test/ || true
 
 coverage: (test "ON")
@@ -12,10 +12,10 @@ coverage: (test "ON")
   mkdir -p build/cover
   gcovr --html-details --output build/cover/report.html
 
-benchmark:
-  cmake -B build . -DCMAKE_BUILD_TYPE=Release
+benchmark *FLAGS:
+  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release .
   cmake --build ./build --target allocator_benchmark
-  ./build/bench/allocator_benchmark
+  ./build/bench/allocator_benchmark {{FLAGS}}
 
 fuzz:
   just clean

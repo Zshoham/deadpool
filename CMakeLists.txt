@@ -2,13 +2,15 @@ cmake_minimum_required(VERSION 4.0)
 project(memory_allocator C CXX)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ENABLE_COVERAGE "Enable test coverage generation" OFF)
 
 include(cmake/generate_config.cmake)
-generate_config_helpers(CONFIG_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/config.h")
+generate_config_helpers(
+  CONFIG_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/config.h"
+)
 
 add_library(allocator src/allocator.c)
 add_dependencies(allocator gen_config_headers)
