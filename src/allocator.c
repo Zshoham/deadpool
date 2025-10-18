@@ -1,24 +1,31 @@
+#include <stddef.h>
+#include <stdalign.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "allocator.h"
 
 #define ILLEGAL_BLOCK_PTR UINTPTR_MAX
 
+static const uint8_t default_align = alignof(max_align_t);
+
 // Helper function to align an address
-// static uintptr_t align_address(uintptr_t address, size_t alignment) {
-//   if (alignment <= 1)
-//     return address; // No alignment needed
-//   return (address + (alignment - 1)) & ~(alignment - 1);
-// }
+static uintptr_t align_address(uintptr_t address, size_t alignment) {
+  return (address + (alignment - 1)) & ~(alignment - 1);
+}
 
 static block_header *next_phys(dp_alloc *allocator, block_header *block) {
   return (block_header *)((uint8_t *)block + block->size +
                           sizeof(block_header));
+}
+
+size_t get_block_fit(block_header *header, size_t requested, size_t alignment) {
+  uintptr_t user_ptr = (uintptr_t)header + sizeof(block_header);
+  size_t additional_size = align_address(user_ptr, alignment) - user_ptr;
+  return header->size - requested - additional_size;
 }
 
 bool dp_init(
@@ -45,6 +52,24 @@ bool dp_init(
 }
 
 void *dp_malloc(dp_alloc *allocator, size_t size) {
+/*
+Layout of allocated buffer:
+
+          alignment
+       ┌──────^───────┐
+ size_t           1B
+|~~~~~~|       |~~~~~~|
+┌──────┬───────┬──────┬───────────────────┐
+│header│padding│offset│    user buffer    │
+└──────┴───────┴──────┴───────────────────┘
+                      ▲
+                   user ptr
+
+header contains only the size of the buffer, including padding and offset.
+offset is used by free to get from the user pointer back to the header.
+padding is needed to fill the space for alignment.
+ */
+
   size_t required_size = size + sizeof(block_header);
 
   if (size == 0 || allocator == NULL || required_size > allocator->available ||
@@ -57,9 +82,11 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   block_header *prev_best_fit = NULL;
   block_header *best_fit = current;
   size_t min_fit = UINTPTR_MAX;
+  allocator->num_iterations = 1;
 
   do {
     // we have a check after the loop to catch underflows.
+    // size_t fit = get_block_fit(current, size, default_align);
     size_t fit = current->size - size;
     if (fit < min_fit) {
       best_fit = current;
@@ -70,6 +97,7 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
       break;
     prev = current;
     current = current->next;
+    allocator->num_iterations++;
   } while (current != NULL);
 
   if (min_fit > best_fit->size)
@@ -120,9 +148,12 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   // best_fit->next = (block_header *)UINTPTR_MAX;
   best_fit->next = NULL;
   allocator->available -= size;
-  fprintf(stderr, "Info: allocated block at %p (sz=%zu, hd=%p, avl=%zu)\n",
+  DP_INFO(allocator, "Info: allocated block at %p (sz=%zu, hd=%p, avl=%zu)\n",
           best_fit, best_fit->size, allocator->free_list_head,
           allocator->available);
+  // uint8_t *user_ptr = (uint8_t *)best_fit + sizeof(block_header);
+  // uintptr_t aligned_addr = align_address((uintptr_t)user_ptr, default_align);
+  // return (uint8_t*)aligned_addr;
   return (uint8_t *)best_fit + sizeof(block_header);
 }
 
@@ -177,7 +208,7 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
     return free_block;
 
   if (to_coalsce_left != NULL) {
-    fprintf(stderr, "Info: Coalscing left (cb=%zu, fb=%zu, avl=%zu)\n",
+    DP_INFO(allocator, "Coalscing left (cb=%zu, fb=%zu, avl=%zu)\n",
             to_coalsce_left->size, free_block->size, allocator->available);
     to_coalsce_left->size += sizeof(block_header) + free_block->size;
     allocator->available += sizeof(block_header);
@@ -185,13 +216,13 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
   }
 
   if (to_coalsce_right != NULL) {
-    fprintf(stderr, "Info: Coalscing left (fb=%zu, cb=%zu, avl=%zu)\n",
+    DP_INFO(allocator, "Coalscing left (fb=%zu, cb=%zu, avl=%zu)\n",
             free_block->size, to_coalsce_right->size, allocator->available);
     free_block->size += sizeof(block_header) + to_coalsce_right->size;
     allocator->available += sizeof(block_header);
   }
 
-  fprintf(stderr, "Info: Successfull coalscence (avl=%zu)\n",
+  DP_INFO(allocator, "Successfull coalscence (avl=%zu)\n",
           allocator->available);
   return free_block;
 }
