@@ -47,6 +47,7 @@ typedef struct dp_alloc {
     block_header* free_list_head;
 
     IF_DP_LOG(dp_logger logger;)
+    IF_DP_STATS(size_t num_iterations;)
 } dp_alloc;
 
 bool dp_init(dp_alloc* allocator, void* buffer, size_t buffer_size IF_DP_LOG(, dp_logger logger));
