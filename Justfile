@@ -4,7 +4,7 @@ configure:
 
 test coverage="OFF" *FLAGS:
   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE={{coverage}} .
-  cmake --build ./build --target allocator_test {{FLAGS}}
+  cmake --build ./build --target allocator_test
   ctest --output-on-failure --test-dir build/test/ || true
 
 coverage: (test "ON")
