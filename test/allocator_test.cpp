@@ -1,11 +1,11 @@
 #include <algorithm>
-#include <ranges>
 #include <array>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <gtest/gtest.h>
+#include <ranges>
 #include <vector>
 
 #include "allocator.h"
@@ -59,13 +59,9 @@ protected:
     void *ptr;
     size_t size;
 
-    bool operator<(const AllocationMetadata &other) const {
-      return ptr < other.ptr;
-    }
+    bool operator<(const AllocationMetadata &other) const { return ptr < other.ptr; }
 
-    bool operator==(const AllocationMetadata &other) const {
-      return ptr == other.ptr;
-    }
+    bool operator==(const AllocationMetadata &other) const { return ptr == other.ptr; }
   };
 
   static constexpr size_t BUFFER_SIZE = 1024;
@@ -102,16 +98,14 @@ protected:
     if (allocator.free_list_head != nullptr) {
       ASSERT_TRUE(allocator.free_list_head->is_free);
     }
-    
+
     if (result != NULL) {
       *result = allocated_ptr;
     }
   }
 
   void checked_free(void *ptr) {
-    auto erased =
-        std::erase_if(allocated,
-                     [&](auto allocation) { return allocation.ptr == ptr; });
+    auto erased = std::erase_if(allocated, [&](auto allocation) { return allocation.ptr == ptr; });
     ASSERT_GT(erased, 0);
     ASSERT_EQ(dp_free(&allocator, ptr), 0);
   }
@@ -145,8 +139,7 @@ TEST_F(DPAllocatorTest, MultipleAllocations) {
 
   // Verify all pointers are different
   std::sort(allocated.begin(), allocated.end());
-  ASSERT_EQ(allocated.end(),
-            std::adjacent_find(allocated.begin(), allocated.end()));
+  ASSERT_EQ(allocated.end(), std::adjacent_find(allocated.begin(), allocated.end()));
 }
 
 // Fragmentation Tests
@@ -161,8 +154,7 @@ TEST_F(DPAllocatorTest, FragmentationAndCoalescing) {
 
   // Allocate slightly smaller block - should fit in the gap
   ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &ptr4));
-  block_header *p4_block =
-      (block_header *)((uint8_t *)ptr4 - sizeof(block_header));
+  block_header *p4_block = (block_header *)((uint8_t *)ptr4 - sizeof(block_header));
 
   // Free all blocks
   ASSERT_NO_FATAL_FAILURE(checked_free(ptr1));
@@ -191,7 +183,6 @@ TEST_F(DPAllocatorTest, FragmentedTooLargeAllocationFailure) {
 
   ASSERT_EQ(dp_malloc(&allocator, 200), (void *)NULL);
 }
-
 
 // Edge Cases
 TEST_F(DPAllocatorTest, ZeroSizeAllocation) {
@@ -299,11 +290,11 @@ TEST_F(DPAllocatorTest, BestFitNotHead) {
   allocated.clear();
   // Re-init allocator
   buffer.fill(0);
-  dp_init(&allocator, buffer.data(),
-          BUFFER_SIZE IF_DP_LOG(, {.debug = test_debug,
-                                   .info = test_info,
-                                   .warning = test_warning,
-                                   .error = test_error}));
+  dp_init(
+      &allocator, buffer.data(),
+      BUFFER_SIZE IF_DP_LOG(
+          ,
+          {.debug = test_debug, .info = test_info, .warning = test_warning, .error = test_error}));
 
   ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &p1));
   ASSERT_NO_FATAL_FAILURE(checked_alloc(10, &barrier));
@@ -364,10 +355,260 @@ TEST_F(DPAllocatorTest, Complexity) {
 // Check num_iterations
 // It should be at least N/2 (number of free blocks).
 #if DP_STATS
-  test_info("Complexity check: N=%d, iterations=%zu\n", N / 2,
-            allocator.num_iterations);
+  test_info("Complexity check: N=%d, iterations=%zu\n", N / 2, allocator.num_iterations);
   ASSERT_GE(allocator.num_iterations, N / 2);
 #endif
+}
+
+// Non-aligned size tests
+TEST_F(DPAllocatorTest, NonAlignedSizeAllocations) {
+  void *ptr1, *ptr2, *ptr3;
+
+  // Allocate sizes that are not multiples of DEFAULT_ALIGN
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(1, &ptr1));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(7, &ptr2));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(13, &ptr3));
+
+  // Verify all pointers are properly aligned
+  ASSERT_EQ(0, reinterpret_cast<uintptr_t>(ptr1) % DEFAULT_ALIGN);
+  ASSERT_EQ(0, reinterpret_cast<uintptr_t>(ptr2) % DEFAULT_ALIGN);
+  ASSERT_EQ(0, reinterpret_cast<uintptr_t>(ptr3) % DEFAULT_ALIGN);
+
+  // Verify we can write to and read from the allocated memory
+  memset(ptr1, 0xAA, 1);
+  memset(ptr2, 0xBB, 7);
+  memset(ptr3, 0xCC, 13);
+
+  ASSERT_EQ(0xAA, *static_cast<uint8_t *>(ptr1));
+  ASSERT_EQ(0xBB, *static_cast<uint8_t *>(ptr2));
+  ASSERT_EQ(0xCC, *static_cast<uint8_t *>(ptr3));
+}
+
+TEST_F(DPAllocatorTest, OddSizeAllocationsSequence) {
+  std::vector<void *> ptrs;
+
+  // Allocate a variety of odd sizes
+  size_t odd_sizes[] = {3, 5, 11, 17, 23, 31, 37, 41};
+  for (size_t sz : odd_sizes) {
+    void *p;
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(sz, &p));
+    ptrs.push_back(p);
+    ASSERT_EQ(0, reinterpret_cast<uintptr_t>(p) % DEFAULT_ALIGN);
+  }
+
+  // Free every other and reallocate
+  for (size_t i = 0; i < ptrs.size(); i += 2) {
+    ASSERT_NO_FATAL_FAILURE(checked_free(ptrs[i]));
+  }
+
+  // Allocate different odd sizes into the freed slots
+  for (size_t i = 0; i < 4; i++) {
+    void *p;
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(9 + i * 2, &p));
+    ptrs.push_back(p);
+    ASSERT_EQ(0, reinterpret_cast<uintptr_t>(p) % DEFAULT_ALIGN);
+  }
+}
+
+// Perfect fit tests - ensure no overflow when block size exactly matches
+TEST_F(DPAllocatorTest, PerfectFitNoOverflow) {
+  // Create a known-size free block by allocating and freeing
+  void *p1, *barrier, *p2;
+
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(64, &p1));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(16, &barrier)); // Prevents coalescing
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(64, &p2));
+
+  // Get the actual block size that was allocated for p1
+  block_header *p1_header = (block_header *)((uint8_t *)p1 - sizeof(block_header) -
+                                             (*((uint8_t *)p1 - 1) - sizeof(block_header)));
+
+  // Free p1 to create a free block
+  ASSERT_NO_FATAL_FAILURE(checked_free(p1));
+
+  // Now allocate exactly the same size - should get perfect fit
+  void *p3;
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(64, &p3));
+
+  // Should reuse the same slot
+  ASSERT_EQ(p3, p1);
+}
+
+TEST_F(DPAllocatorTest, PerfectFitMultipleSizes) {
+  // Test perfect fits with various sizes
+  size_t sizes[] = {16, 32, 48, 64};
+  std::vector<void *> ptrs;
+  void *barrier;
+
+  // Allocate blocks with barriers between them
+  for (size_t sz : sizes) {
+    void *p;
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(sz, &p));
+    ptrs.push_back(p);
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(8, &barrier)); // Small barrier
+  }
+
+  // Free all the main blocks (not barriers)
+  std::vector<void *> freed_ptrs;
+  for (void *p : ptrs) {
+    freed_ptrs.push_back(p);
+    ASSERT_NO_FATAL_FAILURE(checked_free(p));
+  }
+
+  // Reallocate same sizes - should get perfect fits
+  for (size_t i = 0; i < 4; i++) {
+    void *p;
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(sizes[i], &p));
+    // The allocator uses best-fit, so it should reuse the matching block
+  }
+}
+
+// Coalescing tests
+TEST_F(DPAllocatorTest, LeftCoalescing) {
+  void *p1, *p2, *barrier;
+
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &p1));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &p2));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(50, &barrier)); // Prevent right coalescing
+
+  // Free p1 first (left block)
+  ASSERT_NO_FATAL_FAILURE(checked_free(p1));
+
+  // Count free blocks before freeing p2
+  size_t free_blocks_before = 0;
+  block_header *curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks_before++;
+    curr = curr->next;
+  }
+
+  // Free p2 (should coalesce left with p1)
+  ASSERT_NO_FATAL_FAILURE(checked_free(p2));
+
+  // Count free blocks after - should be same or fewer due to coalescing
+  size_t free_blocks_after = 0;
+  curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks_after++;
+    curr = curr->next;
+  }
+
+  // After coalescing, we should have fewer separate blocks
+  ASSERT_LE(free_blocks_after, free_blocks_before);
+
+  // Should be able to allocate a block that spans both freed regions
+  void *large;
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(180, &large));
+}
+
+TEST_F(DPAllocatorTest, RightCoalescing) {
+  void *barrier, *p1, *p2;
+
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(50, &barrier)); // Prevent left coalescing
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &p1));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &p2));
+
+  // Free p2 first (right block)
+  ASSERT_NO_FATAL_FAILURE(checked_free(p2));
+
+  size_t free_blocks_before = 0;
+  block_header *curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks_before++;
+    curr = curr->next;
+  }
+
+  // Free p1 (should coalesce right with p2)
+  ASSERT_NO_FATAL_FAILURE(checked_free(p1));
+
+  size_t free_blocks_after = 0;
+  curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks_after++;
+    curr = curr->next;
+  }
+
+  ASSERT_LE(free_blocks_after, free_blocks_before);
+
+  // Should be able to allocate a block that spans both freed regions
+  void *large;
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(180, &large));
+}
+
+TEST_F(DPAllocatorTest, BothSidesCoalescing) {
+  void *barrier_left, *p1, *p2, *p3, *barrier_right;
+
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(32, &barrier_left));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(80, &p1));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(80, &p2));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(80, &p3));
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(32, &barrier_right));
+
+  // Free left and right neighbors first
+  ASSERT_NO_FATAL_FAILURE(checked_free(p1));
+  ASSERT_NO_FATAL_FAILURE(checked_free(p3));
+
+  size_t free_blocks_before = 0;
+  block_header *curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks_before++;
+    curr = curr->next;
+  }
+
+  // Free middle block - should coalesce with both neighbors
+  ASSERT_NO_FATAL_FAILURE(checked_free(p2));
+
+  size_t free_blocks_after = 0;
+  curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks_after++;
+    curr = curr->next;
+  }
+
+  // Should have coalesced into fewer blocks
+  ASSERT_LT(free_blocks_after, free_blocks_before);
+
+  // Should be able to allocate a large block spanning all three
+  void *large;
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(220, &large));
+}
+
+TEST_F(DPAllocatorTest, CoalescingSequenceAlternating) {
+  // Allocate many blocks
+  std::vector<void *> ptrs;
+  for (int i = 0; i < 8; i++) {
+    void *p;
+    ASSERT_NO_FATAL_FAILURE(checked_alloc(32, &p));
+    ptrs.push_back(p);
+  }
+
+  // Free in alternating pattern: 0, 2, 4, 6
+  for (int i = 0; i < 8; i += 2) {
+    ASSERT_NO_FATAL_FAILURE(checked_free(ptrs[i]));
+  }
+
+  // Now free the remaining: 1, 3, 5, 7 - each should coalesce with neighbors
+  for (int i = 1; i < 8; i += 2) {
+    ASSERT_NO_FATAL_FAILURE(checked_free(ptrs[i]));
+  }
+
+  // After all frees, should have minimal fragmentation (one large block)
+  size_t free_blocks = 0;
+  block_header *curr = allocator.free_list_head;
+  while (curr) {
+    free_blocks++;
+    curr = curr->next;
+  }
+
+  // All blocks should have coalesced
+  ASSERT_EQ(free_blocks, 1);
+
+  // Clear tracking since we already freed everything
+  allocated.clear();
+
+  // Should be able to allocate most of the buffer
+  void *large;
+  ASSERT_NO_FATAL_FAILURE(checked_alloc(800, &large));
 }
 
 TEST_F(DPAllocatorTest, FragmentationMetric) {
@@ -382,11 +623,11 @@ TEST_F(DPAllocatorTest, FragmentationMetric) {
   // We need to fill the buffer first to avoid tail merging effects.
   allocated.clear();
   buffer.fill(0);
-  dp_init(&allocator, buffer.data(),
-          BUFFER_SIZE IF_DP_LOG(, {.debug = test_debug,
-                                   .info = test_info,
-                                   .warning = test_warning,
-                                   .error = test_error}));
+  dp_init(
+      &allocator, buffer.data(),
+      BUFFER_SIZE IF_DP_LOG(
+          ,
+          {.debug = test_debug, .info = test_info, .warning = test_warning, .error = test_error}));
 
   void *p1, *p2, *p3, *tail;
   checked_alloc(100, &p1);
