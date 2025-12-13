@@ -24,13 +24,20 @@ bool dp_init(dp_alloc *allocator, void *buffer, size_t buffer_size IF_DP_LOG(, d
   if (buffer == NULL || buffer_size < sizeof(block_header)) {
     return false;
   }
-  allocator->buffer = (uint8_t *)buffer;
-  allocator->buffer_size = buffer_size;
-  allocator->available = buffer_size - sizeof(block_header);
+
+  uintptr_t aligned_start = align_address((uintptr_t)buffer, default_align);
+  size_t alignment_offset = aligned_start - (uintptr_t)buffer;
+  if (buffer_size <= alignment_offset + sizeof(block_header)) {
+    return false;
+  }
+
+  allocator->buffer = (uint8_t *)aligned_start;
+  allocator->buffer_size = buffer_size - alignment_offset;
+  allocator->available = allocator->buffer_size - sizeof(block_header);
   IF_DP_LOG(allocator->logger = logger;)
 
   block_header *header = (block_header *)allocator->buffer;
-  header->size = buffer_size - sizeof(block_header);
+  header->size = allocator->buffer_size - sizeof(block_header);
   header->is_free = true;
   header->next = NULL;
 
@@ -57,9 +64,10 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   padding is needed to fill the space for alignment.
    */
 
-  size_t required_size = size + sizeof(block_header);
+  size_t max_padding = default_align - 1 + 1; // alignment padding + 1 byte for offset
+  size_t min_alloc_size = size + max_padding;
 
-  if (size == 0 || allocator == NULL || required_size > allocator->available ||
+  if (size == 0 || allocator == NULL || min_alloc_size > allocator->available ||
       allocator->free_list_head == NULL) {
     return NULL;
   }
@@ -67,16 +75,23 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
   block_header *current = allocator->free_list_head;
   block_header *prev = NULL;
   block_header *prev_best_fit = NULL;
-  block_header *best_fit = current;
+  block_header *best_fit = NULL;
+  size_t best_fit_alloc_size = 0;
   size_t min_fit = UINTPTR_MAX;
   IF_DP_STATS(allocator->num_iterations = 1;)
 
   do {
-    if (size <= current->size) {
-      size_t fit = current->size - size;
+    uintptr_t block_start = (uintptr_t)current + sizeof(block_header);
+    uintptr_t aligned_user_ptr = align_address(block_start + 1, default_align);
+    size_t padding = aligned_user_ptr - block_start;
+    size_t alloc_size = size + padding;
+
+    if (alloc_size <= current->size) {
+      size_t fit = current->size - alloc_size;
       if (fit < min_fit) {
         best_fit = current;
         prev_best_fit = prev;
+        best_fit_alloc_size = alloc_size;
         min_fit = fit;
       }
       if (min_fit == 0)
@@ -87,20 +102,26 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
     IF_DP_STATS(allocator->num_iterations++;)
   } while (current != NULL);
 
-  if (min_fit > best_fit->size)
+  if (best_fit == NULL)
     return NULL;
+
+  uintptr_t next_block_addr = align_address(
+      (uintptr_t)best_fit + sizeof(block_header) + best_fit_alloc_size, default_align);
+  size_t actual_alloc_size = next_block_addr - (uintptr_t)best_fit - sizeof(block_header);
+  size_t remainder = best_fit->size - actual_alloc_size;
 
   // Handle leftover space: if remainder is too small for a new block header,
   // remove best_fit from free list entirely. Otherwise, create a new free block.
-  if (min_fit < sizeof(block_header)) {
+  if (remainder < sizeof(block_header)) {
+    actual_alloc_size = best_fit->size;
     if (best_fit == allocator->free_list_head) {
       allocator->free_list_head = best_fit->next;
     } else {
       prev_best_fit->next = best_fit->next;
     }
   } else {
-    block_header *new_best_fit = (block_header *)((uint8_t *)best_fit + required_size);
-    new_best_fit->size = best_fit->size - required_size;
+    block_header *new_best_fit = (block_header *)next_block_addr;
+    new_best_fit->size = best_fit->size - actual_alloc_size - sizeof(block_header);
     new_best_fit->is_free = true;
     new_best_fit->next = best_fit->next;
 
@@ -113,15 +134,21 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
     allocator->available -= sizeof(block_header); // Account for new header
   }
 
-  best_fit->size = size;
+  best_fit->size = actual_alloc_size;
   best_fit->is_free = false;
   best_fit->next = NULL;
-  allocator->available -= size;
+  allocator->available -= actual_alloc_size;
 
-  DP_INFO(allocator, "Allocated block at %p (size=%u, free_list_head=%p, available=%u)", best_fit,
-          best_fit->size, (void *)allocator->free_list_head, allocator->available);
+  uintptr_t block_start = (uintptr_t)best_fit + sizeof(block_header);
+  uintptr_t aligned_user_ptr = align_address(block_start + 1, default_align);
+  uint8_t offset = (uint8_t)(aligned_user_ptr - block_start);
 
-  return (uint8_t *)best_fit + sizeof(block_header);
+  *((uint8_t *)aligned_user_ptr - 1) = offset;
+
+  DP_INFO(allocator, "Allocated block at %p (size=%zu, offset=%u, free_list_head=%p, available=%zu)",
+          best_fit, best_fit->size, offset, (void *)allocator->free_list_head, allocator->available);
+
+  return (void *)aligned_user_ptr;
 }
 
 static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
@@ -198,7 +225,8 @@ int dp_free(dp_alloc *allocator, void *ptr) {
     return 1;
   }
 
-  block_header *to_free = (block_header *)((uint8_t *)ptr - sizeof(block_header));
+  uint8_t offset = *((uint8_t *)ptr - 1);
+  block_header *to_free = (block_header *)((uint8_t *)ptr - offset - sizeof(block_header));
 
   // if (to_free->next != (block_header *)UINTPTR_MAX) {
   if (to_free->next != NULL) {
