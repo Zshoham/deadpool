@@ -1,9 +1,9 @@
-#include <stddef.h>
-#include <stdalign.h>
 #include <limits.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "allocator.h"
@@ -12,28 +12,15 @@
 
 static const uint8_t default_align = alignof(max_align_t);
 
-// Helper function to align an address
-static uintptr_t align_address(uintptr_t address, size_t alignment) {
+static inline uintptr_t align_address(uintptr_t address, size_t alignment) {
   return (address + (alignment - 1)) & ~(alignment - 1);
 }
 
 static block_header *next_phys(dp_alloc *allocator, block_header *block) {
-  return (block_header *)((uint8_t *)block + block->size +
-                          sizeof(block_header));
+  return (block_header *)((uint8_t *)block + block->size + sizeof(block_header));
 }
 
-size_t get_block_fit(block_header *header, size_t requested, size_t alignment) {
-  uintptr_t user_ptr = (uintptr_t)header + sizeof(block_header);
-  size_t additional_size = align_address(user_ptr, alignment) - user_ptr;
-  return header->size - requested - additional_size;
-}
-
-bool dp_init(
-  dp_alloc *allocator,
-  void *buffer,
-  size_t buffer_size
-  IF_DP_LOG(, dp_logger logger))
-{
+bool dp_init(dp_alloc *allocator, void *buffer, size_t buffer_size IF_DP_LOG(, dp_logger logger)) {
   if (buffer == NULL || buffer_size < sizeof(block_header)) {
     return false;
   }
@@ -52,23 +39,23 @@ bool dp_init(
 }
 
 void *dp_malloc(dp_alloc *allocator, size_t size) {
-/*
-Layout of allocated buffer:
+  /*
+  Layout of allocated buffer:
 
-          alignment
-       ┌──────^───────┐
- size_t           1B
-|~~~~~~|       |~~~~~~|
-┌──────┬───────┬──────┬───────────────────┐
-│header│padding│offset│    user buffer    │
-└──────┴───────┴──────┴───────────────────┘
-                      ▲
-                   user ptr
+            alignment
+         ┌──────^───────┐
+   size_t           1B
+  |~~~~~~|       |~~~~~~|
+  ┌──────┬───────┬──────┬───────────────────┐
+  │header│padding│offset│    user buffer    │
+  └──────┴───────┴──────┴───────────────────┘
+                        ▲
+                     user ptr
 
-header contains only the size of the buffer, including padding and offset.
-offset is used by free to get from the user pointer back to the header.
-padding is needed to fill the space for alignment.
- */
+  header contains only the size of the buffer, including padding and offset.
+  offset is used by free to get from the user pointer back to the header.
+  padding is needed to fill the space for alignment.
+   */
 
   size_t required_size = size + sizeof(block_header);
 
@@ -82,31 +69,29 @@ padding is needed to fill the space for alignment.
   block_header *prev_best_fit = NULL;
   block_header *best_fit = current;
   size_t min_fit = UINTPTR_MAX;
-  allocator->num_iterations = 1;
+  IF_DP_STATS(allocator->num_iterations = 1;)
 
   do {
-    // we have a check after the loop to catch underflows.
-    // size_t fit = get_block_fit(current, size, default_align);
-    size_t fit = current->size - size;
-    if (fit < min_fit) {
-      best_fit = current;
-      prev_best_fit = prev;
-      min_fit = fit;
+    if (size <= current->size) {
+      size_t fit = current->size - size;
+      if (fit < min_fit) {
+        best_fit = current;
+        prev_best_fit = prev;
+        min_fit = fit;
+      }
+      if (min_fit == 0)
+        break; // perfect fit.
     }
-    if (min_fit == 0)
-      break;
     prev = current;
     current = current->next;
-    allocator->num_iterations++;
+    IF_DP_STATS(allocator->num_iterations++;)
   } while (current != NULL);
 
   if (min_fit > best_fit->size)
     return NULL;
 
-  // fprintf(stderr, "Info: trying to allocate bf=%p, sz=%zu bfn=%p hd=%p\n",
-  //         best_fit, best_fit->size, best_fit->next,
-  //         allocator->free_list_head);
-
+  // Handle leftover space: if remainder is too small for a new block header,
+  // remove best_fit from free list entirely. Otherwise, create a new free block.
   if (min_fit < sizeof(block_header)) {
     if (best_fit == allocator->free_list_head) {
       allocator->free_list_head = best_fit->next;
@@ -114,46 +99,28 @@ padding is needed to fill the space for alignment.
       prev_best_fit->next = best_fit->next;
     }
   } else {
-    // TODO: need to make sure we actually have enough space for this.
-    block_header *new_best_fit =
-        (block_header *)((uint8_t *)best_fit + required_size);
-    // fprintf(stderr, "Info: rearanging stuff nbf=%p\n", new_best_fit);
+    block_header *new_best_fit = (block_header *)((uint8_t *)best_fit + required_size);
     new_best_fit->size = best_fit->size - required_size;
     new_best_fit->is_free = true;
     new_best_fit->next = best_fit->next;
+
+    // Link the new free block into the free list
     if (best_fit == allocator->free_list_head) {
       allocator->free_list_head = new_best_fit;
     } else {
       prev_best_fit->next = new_best_fit;
     }
-    allocator->available -= sizeof(block_header);
+    allocator->available -= sizeof(block_header); // Account for new header
   }
 
-  // if (prev_best_fit) {
-  //   prev_best_fit->next = best_fit->next;
-  // } else {
-  //   block_header *new_free_head =
-  //       (block_header *)((uint8_t *)best_fit + required_size);
-  //   new_free_head->next = allocator->free_list_head->next;
-  //   new_free_head->size = best_fit->size - required_size;
-  //   new_free_head->is_free = true;
-  //   allocator->free_list_head = new_free_head;
-  // }
-
-  // NOTE: why do we need to return a the block metadata to the user ?
-  // we actually just use the size when freeing.
-  // the other metadata can be used to detect bugs, but should not be default...
   best_fit->size = size;
   best_fit->is_free = false;
-  // best_fit->next = (block_header *)UINTPTR_MAX;
   best_fit->next = NULL;
   allocator->available -= size;
-  DP_INFO(allocator, "Info: allocated block at %p (sz=%zu, hd=%p, avl=%zu)\n",
-          best_fit, best_fit->size, allocator->free_list_head,
-          allocator->available);
-  // uint8_t *user_ptr = (uint8_t *)best_fit + sizeof(block_header);
-  // uintptr_t aligned_addr = align_address((uintptr_t)user_ptr, default_align);
-  // return (uint8_t*)aligned_addr;
+
+  DP_INFO(allocator, "Allocated block at %p (size=%u, free_list_head=%p, available=%u)", best_fit,
+          best_fit->size, (void *)allocator->free_list_head, allocator->available);
+
   return (uint8_t *)best_fit + sizeof(block_header);
 }
 
@@ -165,8 +132,8 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
 
   while (current != NULL) {
     if (next_phys(allocator, free_block) == current) {
-      // fprintf(stderr, "Info: coalscing(left) (free) %p-%p with %p-%p\n",
-      //         free_block, current, current, next_phys(allocator, current));
+      DP_DEBUG(allocator, "Found coalscing block on the right (free)%p-%p with (coalscing)%p-%p",
+              free_block, current, current, next_phys(allocator, current));
       to_coalsce_right = current;
       if (current == allocator->free_list_head) {
         allocator->free_list_head = to_coalsce_right->next;
@@ -182,9 +149,8 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
         continue;
     }
     if (next_phys(allocator, current) == free_block) {
-      // fprintf(stderr, "Info: coalscing(right) (free) %p-%p with %p-%p\n",
-      //         free_block, next_phys(allocator, free_block), current,
-      //         free_block);
+      DP_DEBUG(allocator, "Found coalscing block on the left (coalscing)%p-%p with (free)%p-%p",
+               current, free_block, free_block, next_phys(allocator, free_block));
       to_coalsce_left = current;
       if (current == allocator->free_list_head) {
         allocator->free_list_head = to_coalsce_left->next;
@@ -208,22 +174,21 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
     return free_block;
 
   if (to_coalsce_left != NULL) {
-    DP_INFO(allocator, "Coalscing left (cb=%zu, fb=%zu, avl=%zu)\n",
-            to_coalsce_left->size, free_block->size, allocator->available);
+    DP_DEBUG(allocator, "Coalscing left (cb=%zu, fb=%zu, avl=%zu)", to_coalsce_left->size,
+            free_block->size, allocator->available);
     to_coalsce_left->size += sizeof(block_header) + free_block->size;
     allocator->available += sizeof(block_header);
     free_block = to_coalsce_left;
   }
 
   if (to_coalsce_right != NULL) {
-    DP_INFO(allocator, "Coalscing left (fb=%zu, cb=%zu, avl=%zu)\n",
-            free_block->size, to_coalsce_right->size, allocator->available);
+    DP_DEBUG(allocator, "Coalscing left (fb=%zu, cb=%zu, avl=%zu)", free_block->size,
+            to_coalsce_right->size, allocator->available);
     free_block->size += sizeof(block_header) + to_coalsce_right->size;
     allocator->available += sizeof(block_header);
   }
 
-  DP_INFO(allocator, "Successfull coalscence (avl=%zu)\n",
-          allocator->available);
+  DP_INFO(allocator, "Successfull coalscence (left=%p, right=%p, avl=%zu)", to_coalsce_left, to_coalsce_right, allocator->available);
   return free_block;
 }
 
@@ -233,29 +198,27 @@ int dp_free(dp_alloc *allocator, void *ptr) {
     return 1;
   }
 
-  block_header *to_free =
-      (block_header *)((uint8_t *)ptr - sizeof(block_header));
+  block_header *to_free = (block_header *)((uint8_t *)ptr - sizeof(block_header));
 
   // if (to_free->next != (block_header *)UINTPTR_MAX) {
   if (to_free->next != NULL) {
-    DP_ERROR(allocator, "Trying to free %p which is not a valid block\n",
-             to_free);
+    DP_ERROR(allocator, "Trying to free %p which is not a valid block", to_free);
     return 1;
   }
   if ((uint8_t *)to_free < allocator->buffer ||
       (uint8_t *)to_free >= allocator->buffer + allocator->buffer_size) {
-    DP_ERROR(allocator, "Deallocating invalid pointer %p\n", ptr);
+    DP_ERROR(allocator, "Deallocating invalid pointer %p", ptr);
     return 1; // Invalid pointer
   }
   if (to_free->is_free) {
-    DP_ERROR(allocator, "Double free detected for pointer %p, block_size=%zu\n",
-             ptr, to_free->size);
-    return 1; // Double free
+    DP_ERROR(allocator, "Double free detected for pointer %p, block_size=%zu", ptr, to_free->size);
+    return 1;
   }
 
   allocator->available += to_free->size;
   to_free->is_free = true;
-  DP_DEBUG(allocator, "Freeing block at %p (ptr=%p)\n", to_free, ptr);
+  DP_INFO(allocator, "Freeing block at %p (ptr=%p, free_list_head=%p, available=%zu)", to_free, ptr,
+          allocator->free_list_head, allocator->available);
   to_free = coalsce(allocator, to_free);
   to_free->next = allocator->free_list_head;
   allocator->free_list_head = to_free;
@@ -265,21 +228,35 @@ int dp_free(dp_alloc *allocator, void *ptr) {
   uint32_t circle_lengh = 0;
   while (current != NULL) {
     if (current == (block_header *)UINTPTR_MAX) {
-      DP_ERROR(allocator, "Free list is corrupted after freeing %p\n", to_free);
+      DP_ERROR(allocator, "Free list is corrupted after freeing %p", to_free);
     }
 
     current = current->next;
     circle_lengh += 1;
     if (current == allocator->free_list_head) {
-      DP_ERROR(allocator, "Free list is cirular, with length %u.\n",
-               circle_lengh);
+      DP_ERROR(allocator, "Free list is cirular, with length %u.", circle_lengh);
       return 1;
     }
   }
 
-  DP_INFO(allocator, "Freed block at %p, free list has %u blocks\n", to_free,
-          circle_lengh);
-
+  DP_INFO(allocator, "Freed block at %p, free list has %u blocks", to_free, circle_lengh);
 #endif
+
   return 0;
 }
+
+#if DP_STATS
+float dp_get_fragmentation(dp_alloc *allocator) {
+  size_t largest = 0;
+  size_t total = 0;
+  block_header *curr = allocator->free_list_head;
+  while (curr) {
+    total += curr->size;
+    if (curr->size > largest)
+      largest = curr->size;
+    curr = curr->next;
+  }
+
+  return (total > 0) ? 1.0f - (float)largest / total : 0.0f;
+}
+#endif
