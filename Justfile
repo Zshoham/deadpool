@@ -4,7 +4,7 @@ configure:
 
 test coverage="OFF" *FLAGS:
   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE={{coverage}} .
-  cmake --build ./build --target allocator_test
+  cmake --build ./build --target tests
   ctest --output-on-failure --test-dir build/test/ || true
 
 coverage: (test "ON")
@@ -22,12 +22,15 @@ fuzz:
   CXX=clang CC=clang cmake -B build -DCMAKE_BUILD_TYPE=Debug .
   cmake --build ./build --target allocator_fuzz
 
+format:
+  clang-format --sort-includes --style=file --verbose -i $(fd -e h -e c -e cpp -e hpp -E external)
+
 arm:
   docker build -f arch/Dockerfile.arm -t dp-cross-arm:latest .
   docker run -itd -w /mnt/deadpool -v $PWD:/mnt/deadpool --name dp_cross_arm dp-cross-arm:latest
   docker exec -it dp_cross_arm bash -c "cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=arch/arm-toolchain.cmake"
-  docker exec -it dp_cross_arm bash -c "cmake --build ./build --target allocator_test"
-  docker exec -it dp_cross_arm bash -c "qemu-arm-static -L /usr/arm-linux-gnueabihf build/test/allocator_test"
+  docker exec -it dp_cross_arm bash -c "cmake --build ./build --target tests"
+  docker exec -it dp_cross_arm bash -c "qemu-arm-static -L /usr/arm-linux-gnueabihf build/test/allocator_basic_test"
   docker rm -f dp_cross_arm
 
 neon-test:
