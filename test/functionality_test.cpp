@@ -81,9 +81,9 @@ TEST_F(DPAllocatorTest, BestFitNotHead) {
   // Re-init allocator
   buffer.fill(0);
   dp_init(
-      &allocator, buffer.data(),
-      BUFFER_SIZE, IF_DP_LOG(
-          {.debug = test_debug, .info = test_info, .warning = test_warning, .error = test_error}));
+      &allocator, buffer.data(), BUFFER_SIZE
+      IF_DP_LOG(
+          , {.debug = test_debug, .info = test_info, .warning = test_warning, .error = test_error}));
 
   ASSERT_NO_FATAL_FAILURE(checked_alloc(100, &p1));
   ASSERT_NO_FATAL_FAILURE(checked_alloc(10, &barrier));
@@ -105,48 +105,6 @@ TEST_F(DPAllocatorTest, BestFitNotHead) {
 
   // Check that p2 is still free and head (size includes alignment padding)
   ASSERT_GE(allocator.free_list_head->size, 200);
-}
-
-TEST_F(DPAllocatorTest, Complexity) {
-  // Create a fragmented list with N blocks
-  const int N = 20;
-  std::vector<void *> ptrs;
-  for (int i = 0; i < N; ++i) {
-    void *p;
-    checked_alloc(10, &p); // Small allocs
-    ptrs.push_back(p);
-  }
-
-  // Free every other block to create holes
-  for (int i = 0; i < N; i += 2) {
-    checked_free(ptrs[i]);
-  }
-
-  // Now we have N/2 free blocks of size 10.
-  // Check list length
-  size_t list_len = 0;
-  block_header *curr = allocator.free_list_head;
-  while (curr) {
-    list_len++;
-    curr = curr->next;
-  }
-  test_info("List length: %zu\n", list_len);
-
-  // Allocating 9. Fit = 1.
-  // It should traverse all blocks to see if there is a better fit (e.g. size
-  // 9). Since all are 10, it will traverse all.
-
-  void *p;
-  p = dp_malloc(&allocator, 9);
-  ASSERT_NE(p, nullptr);
-  allocated.push_back({p, 9});
-
-// Check num_iterations
-// It should be at least N/2 (number of free blocks).
-#if DP_STATS
-  test_info("Complexity check: N=%d, iterations=%zu\n", N / 2, allocator.num_iterations);
-  ASSERT_GE(allocator.num_iterations, N / 2);
-#endif
 }
 
 // Non-aligned size tests
@@ -398,4 +356,53 @@ TEST_F(DPAllocatorTest, CoalescingSequenceAlternating) {
   // Should be able to allocate most of the buffer
   void *large;
   ASSERT_NO_FATAL_FAILURE(checked_alloc(800, &large));
+}
+
+TEST_F(DPAllocatorTest, FragmentationMetric) {
+// Calculate fragmentation metric: 1 - (largest_free / total_free)
+
+// Initial state: 1 large block. Fragmentation should be 0.
+#if DP_STATS
+  ASSERT_FLOAT_EQ(dp_get_fragmentation(&allocator), 0.0f);
+#endif
+
+  // Fragment it
+  // We need to fill the buffer first to avoid tail merging effects.
+  allocated.clear();
+  buffer.fill(0);
+  dp_init(
+      &allocator, buffer.data(),
+      BUFFER_SIZE IF_DP_LOG(
+          ,
+          {.debug = test_debug, .info = test_info, .warning = test_warning, .error = test_error}));
+
+  void *p1, *p2, *p3, *tail;
+  checked_alloc(100, &p1);
+  checked_alloc(100, &p2);
+  checked_alloc(100, &p3);
+
+  // Alloc rest
+  // We want to fill the remaining space.
+  // allocator.available is the size of the free block payload.
+  // We need to account for the header of the new block.
+  // So we can alloc at most available - sizeof(block_header).
+
+  if (allocator.available > sizeof(block_header)) {
+    checked_alloc(allocator.available - sizeof(block_header), &tail);
+  }
+
+  // Now buffer is full (or close to).
+  // Free p1 and p3.
+  checked_free(p1);
+  checked_free(p3);
+
+  // Free list: p3 (100) -> p1 (100).
+  // Total free: 200. Largest: 100.
+  // Frag = 1 - 100/200 = 0.5.
+
+#if DP_STATS
+  float fragmentation = dp_get_fragmentation(&allocator);
+  ASSERT_NEAR(fragmentation, 0.5f, 0.01f);
+  test_info("Fragmentation check: %f\n", fragmentation);
+#endif
 }

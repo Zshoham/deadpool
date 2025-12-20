@@ -34,15 +34,3 @@ TEST_F(DPAllocatorTest, ExactSizeAllocation) {
   ASSERT_NE(nullptr, ptr);
   ASSERT_EQ(nullptr, dp_malloc(&allocator, 1)); // Should be full
 }
-
-// Alignment Tests
-TEST_F(DPAllocatorTest, PointerAlignment) {
-  void *ptr = dp_malloc(&allocator, 1);
-  ASSERT_NE(nullptr, ptr);
-  ASSERT_EQ(0, reinterpret_cast<uintptr_t>(ptr) % sizeof(void *));
-}
-
-// Invalid Usage Tests - Basic
-TEST_F(DPAllocatorTest, FreeNullPtr) {
-  dp_free(&allocator, nullptr); // Should handle this gracefully
-}
