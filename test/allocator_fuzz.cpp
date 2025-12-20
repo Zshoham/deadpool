@@ -1,266 +1,245 @@
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <random>
 #include <vector>
-#include <iostream>
 
-#include "FuzzedDataProvider.hpp"
+#include "fuzztest/fuzztest.h"
+#include "gtest/gtest.h"
+
 #include "allocator.h"
+#include "config_macros.h"
 
-// Structure to track allocations
-struct AllocationRecord {
-  void *ptr;
-  size_t size;
-  bool is_freed;
-};
+namespace {
 
-class AllocatorFuzzer {
-private:
-  static const size_t BUFFER_SIZE = 64 * 1024; // 64KB buffer
-  uint8_t buffer[BUFFER_SIZE];
-  dp_alloc allocator;
-  std::vector<AllocationRecord> allocations;
+static constexpr size_t BUFFER_SIZE = 4096;
+static constexpr size_t DEFAULT_ALIGN = alignof(max_align_t);
 
+inline void noop_log(const char *, ...) {}
+
+class AllocatorFixture {
 public:
-  AllocatorFuzzer() { dp_init(&allocator, buffer, BUFFER_SIZE); }
-
-  enum Operation {
-    ALLOCATE,
-    FREE,
-    FREE_RANDOM,
-    REALLOC_EQUIVALENT, // Free + Malloc of same size
-    WRITE_TO_MEMORY,
-    CORRUPT_HEADER // For testing robustness
-  };
-
-  bool performOperation(Operation op, size_t size, size_t index) {
-    switch (op) {
-    case ALLOCATE: {
-      void *ptr = dp_malloc(&allocator, size);
-      if (ptr) {
-        allocations.push_back({ptr, size, false});
-        // Write a pattern to the allocated memory
-        std::memset(ptr, 0xAA, size);
-      }
-      return ptr != nullptr;
-    }
-
-    case FREE: {
-      if (index >= allocations.size())
-        return false;
-      if (!allocations[index].is_freed) {
-        dp_free(&allocator, allocations[index].ptr);
-        allocations[index].is_freed = true;
-      }
-      return true;
-    }
-
-    case FREE_RANDOM: {
-      if (allocations.empty())
-        return false;
-      size_t rand_index = index % allocations.size();
-      if (!allocations[rand_index].is_freed) {
-        dp_free(&allocator, allocations[rand_index].ptr);
-        allocations[rand_index].is_freed = true;
-      }
-      return true;
-    }
-
-    case REALLOC_EQUIVALENT: {
-      if (index >= allocations.size())
-        return false;
-      if (allocations[index].is_freed)
-        return false;
-
-      void *new_ptr = dp_malloc(&allocator, allocations[index].size);
-      if (new_ptr) {
-        std::memcpy(new_ptr, allocations[index].ptr, allocations[index].size);
-        dp_free(&allocator, allocations[index].ptr);
-        allocations[index].ptr = new_ptr;
-      }
-      return new_ptr != nullptr;
-    }
-
-    case WRITE_TO_MEMORY: {
-      if (index >= allocations.size())
-        return false;
-      if (allocations[index].is_freed)
-        return false;
-
-      // Write a test pattern to the memory
-      std::memset(allocations[index].ptr, 0xBB, allocations[index].size);
-      return true;
-    }
-
-    case CORRUPT_HEADER: {
-      if (index >= allocations.size())
-        return false;
-      if (allocations[index].is_freed)
-        return false;
-
-      // Attempt to corrupt the header (for testing robustness)
-      uint8_t *header_ptr =
-          static_cast<uint8_t *>(allocations[index].ptr) - sizeof(block_header);
-      header_ptr[0] ^= 0xFF; // Flip bits in the header
-      return true;
-    }
-    }
-    return false;
+  AllocatorFixture() {
+    buffer_.resize(BUFFER_SIZE, 0);
+    dp_init(&allocator_, buffer_.data(),
+            BUFFER_SIZE IF_DP_LOG(, {.debug = noop_log,
+                                     .info = noop_log,
+                                     .warning = noop_log,
+                                     .error = noop_log}));
   }
 
-  void cleanup() {
-    for (auto &alloc : allocations) {
-      if (!alloc.is_freed) {
-        dp_free(&allocator, alloc.ptr);
-      }
-    }
-    allocations.clear();
-  }
+  dp_alloc *get() { return &allocator_; }
 
-  ~AllocatorFuzzer() { cleanup(); }
+private:
+  std::vector<uint8_t> buffer_;
+  dp_alloc allocator_;
 };
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-  if (Size < 4)
-    return 0; // Need minimum input size
+void SingleAllocationDoesNotCrash(size_t size) {
+  if (size > BUFFER_SIZE)
+    return;
 
-  FuzzedDataProvider provider(Data, Size);
-  AllocatorFuzzer fuzzer;
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
 
-  // Number of operations to perform
-  const uint32_t num_ops = provider.ConsumeIntegralInRange<uint32_t>(1, 1000);
-
-  for (uint32_t i = 0; i < num_ops && provider.remaining_bytes() > 0; i++) {
-    // Get random operation
-    AllocatorFuzzer::Operation op = static_cast<AllocatorFuzzer::Operation>(
-        provider.ConsumeIntegralInRange<uint8_t>(0, 5));
-
-    // Get random size (weighted towards interesting values)
-    size_t alloc_size;
-    if (provider.ConsumeBool()) {
-      // Use common sizes
-      alloc_size = provider.PickValueInArray<size_t>(
-          {0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, sizeof(void *),
-           sizeof(void *) - 1, sizeof(void *) + 1});
-    } else {
-      // Use random size
-      alloc_size = provider.ConsumeIntegralInRange<size_t>(0, 16384);
+  void *ptr = dp_malloc(alloc, size);
+  if (ptr != nullptr) {
+    if (size > 0) {
+      memset(ptr, 0xAB, size);
     }
+    EXPECT_EQ(dp_free(alloc, ptr), 0);
+  }
+}
+FUZZ_TEST(AllocatorFuzzTest, SingleAllocationDoesNotCrash)
+    .WithDomains(fuzztest::InRange<size_t>(0, BUFFER_SIZE * 2));
 
-    // Get random index
-    size_t index = provider.ConsumeIntegralInRange<size_t>(0, 1000);
+void AllocationSequenceDoesNotCrash(const std::vector<size_t> &sizes) {
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
 
-    // Perform operation
-    fuzzer.performOperation(op, alloc_size, index);
+  std::vector<void *> ptrs;
+  for (size_t size : sizes) {
+    if (size > 512)
+      continue;
+
+    void *ptr = dp_malloc(alloc, size);
+    if (ptr != nullptr) {
+      if (size > 0) {
+        memset(ptr, 0xCD, size);
+      }
+      ptrs.push_back(ptr);
+    }
   }
 
-  return 0;
+  for (void *ptr : ptrs) {
+    EXPECT_EQ(dp_free(alloc, ptr), 0);
+  }
 }
+FUZZ_TEST(AllocatorFuzzTest, AllocationSequenceDoesNotCrash)
+    .WithDomains(fuzztest::VectorOf(fuzztest::InRange<size_t>(0, 1024))
+                     .WithMaxSize(100));
 
-// Custom mutator to generate more interesting inputs
-// extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *Data, size_t Size,
-//                                           size_t MaxSize, unsigned int Seed) {
-//   // Create a new provider with the seed
-//   std::mt19937 gen(Seed);
-//
-//   // Generate structured input
-//   std::vector<uint8_t> new_data;
-//
-//   // Number of operations
-//   uint32_t num_ops = std::uniform_int_distribution<uint32_t>(1, 100)(gen);
-//   new_data.insert(new_data.end(), reinterpret_cast<uint8_t *>(&num_ops),
-//                   reinterpret_cast<uint8_t *>(&num_ops) + sizeof(num_ops));
-//
-//   // Generate operations
-//   for (uint32_t i = 0; i < num_ops && new_data.size() < MaxSize - 8; i++) {
-//     // Operation type
-//     uint8_t op = std::uniform_int_distribution<uint8_t>(0, 5)(gen);
-//     new_data.push_back(op);
-//
-//     // Size (occasionally use interesting values)
-//     uint32_t size;
-//     if (gen() % 4 == 0) {
-//       static const uint32_t interesting_sizes[] = {
-//           0,
-//           1,
-//           2,
-//           4,
-//           8,
-//           16,
-//           32,
-//           64,
-//           128,
-//           256,
-//           512,
-//           1024,
-//           static_cast<uint32_t>(sizeof(void *)),
-//           static_cast<uint32_t>(sizeof(void *) - 1),
-//           static_cast<uint32_t>(sizeof(void *) + 1)};
-//       size = interesting_sizes[gen() % sizeof(interesting_sizes) /
-//                                sizeof(interesting_sizes[0])];
-//     } else {
-//       size = std::uniform_int_distribution<uint32_t>(0, 16384)(gen);
-//     }
-//     new_data.insert(new_data.end(), reinterpret_cast<uint8_t *>(&size),
-//                     reinterpret_cast<uint8_t *>(&size) + sizeof(size));
-//   }
-//
-//   // Copy to output buffer
-//   Size = std::min(MaxSize, new_data.size());
-//   std::memcpy(Data, new_data.data(), Size);
-//   return Size;
-// }
-//
-// // Custom cross-over to combine interesting test cases
-// extern "C" size_t LLVMFuzzerCustomCrossOver(const uint8_t *Data1, size_t Size1,
-//                                             const uint8_t *Data2, size_t Size2,
-//                                             uint8_t *Out, size_t MaxOutSize,
-//                                             unsigned int Seed) {
-//   std::mt19937 gen(Seed);
-//
-//   // Read number of operations from both inputs
-//   uint32_t num_ops1 = 0, num_ops2 = 0;
-//   if (Size1 >= sizeof(uint32_t))
-//     std::memcpy(&num_ops1, Data1, sizeof(uint32_t));
-//   if (Size2 >= sizeof(uint32_t))
-//     std::memcpy(&num_ops2, Data2, sizeof(uint32_t));
-//
-//   // Create new sequence combining both inputs
-//   std::vector<uint8_t> new_data;
-//   uint32_t new_num_ops =
-//       std::min(num_ops1 + num_ops2, static_cast<uint32_t>(MaxOutSize / 8));
-//
-//   new_data.insert(new_data.end(), reinterpret_cast<uint8_t *>(&new_num_ops),
-//                   reinterpret_cast<uint8_t *>(&new_num_ops) +
-//                       sizeof(new_num_ops));
-//
-//   // Randomly select operations from both inputs
-//   size_t pos1 = sizeof(uint32_t), pos2 = sizeof(uint32_t);
-//   while (new_data.size() < MaxOutSize - 8 && (pos1 < Size1 || pos2 < Size2)) {
-//
-//     // Choose which input to take from
-//     if (pos1 >= Size1)
-//       pos2 += 5;
-//     else if (pos2 >= Size2)
-//       pos1 += 5;
-//     else if (gen() % 2)
-//       pos1 += 5;
-//     else
-//       pos2 += 5;
-//
-//     // Copy operation and its data
-//     if (pos1 < Size1) {
-//       new_data.insert(new_data.end(), Data1 + pos1 - 5, Data1 + pos1);
-//     } else if (pos2 < Size2) {
-//       new_data.insert(new_data.end(), Data2 + pos2 - 5, Data2 + pos2);
-//     }
-//   }
-//
-//   // Copy to output buffer
-//   size_t OutSize = std::min(MaxOutSize, new_data.size());
-//   std::memcpy(Out, new_data.data(), OutSize);
-//   return OutSize;
-// }
+void AllocFreeInterleavedDoesNotCrash(
+    const std::vector<std::pair<bool, size_t>> &operations) {
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+
+  std::vector<void *> live;
+
+  for (const auto &[is_alloc, value] : operations) {
+    if (is_alloc) {
+      size_t size = value % 256;
+      void *ptr = dp_malloc(alloc, size);
+      if (ptr != nullptr) {
+        if (size > 0) {
+          memset(ptr, 0xEE, size);
+        }
+        live.push_back(ptr);
+      }
+    } else if (!live.empty()) {
+      size_t idx = value % live.size();
+      EXPECT_EQ(dp_free(alloc, live[idx]), 0);
+      live.erase(live.begin() + static_cast<long>(idx));
+    }
+  }
+
+  for (void *ptr : live) {
+    EXPECT_EQ(dp_free(alloc, ptr), 0);
+  }
+}
+FUZZ_TEST(AllocatorFuzzTest, AllocFreeInterleavedDoesNotCrash)
+    .WithDomains(
+        fuzztest::VectorOf(fuzztest::PairOf(fuzztest::Arbitrary<bool>(),
+                                            fuzztest::Arbitrary<size_t>()))
+            .WithMaxSize(200));
+
+void MemoryContentsPreserved(const std::vector<std::pair<size_t, uint8_t>> &allocs) {
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+
+  struct TrackedAlloc {
+    void *ptr;
+    size_t size;
+    uint8_t pattern;
+  };
+  std::vector<TrackedAlloc> live;
+
+  for (const auto &[raw_size, pattern] : allocs) {
+    size_t size = (raw_size % 128) + 1;
+    void *ptr = dp_malloc(alloc, size);
+    if (ptr != nullptr) {
+      memset(ptr, pattern, size);
+      live.push_back({ptr, size, pattern});
+    }
+  }
+
+  for (const auto &tracked : live) {
+    const uint8_t *bytes = static_cast<const uint8_t *>(tracked.ptr);
+    for (size_t i = 0; i < tracked.size; ++i) {
+      EXPECT_EQ(bytes[i], tracked.pattern) << "Memory corruption at byte " << i;
+    }
+    EXPECT_EQ(dp_free(alloc, tracked.ptr), 0);
+  }
+}
+FUZZ_TEST(AllocatorFuzzTest, MemoryContentsPreserved)
+    .WithDomains(fuzztest::VectorOf(fuzztest::PairOf(
+                                        fuzztest::Arbitrary<size_t>(),
+                                        fuzztest::Arbitrary<uint8_t>()))
+                     .WithMaxSize(50));
+
+void AlignmentIsCorrect(size_t size) {
+  if (size == 0 || size > BUFFER_SIZE / 2)
+    return;
+
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+
+  void *ptr = dp_malloc(alloc, size);
+  if (ptr != nullptr) {
+    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+    EXPECT_EQ(addr % DEFAULT_ALIGN, 0u) << "Misaligned pointer for size " << size;
+    EXPECT_EQ(dp_free(alloc, ptr), 0);
+  }
+}
+FUZZ_TEST(AllocatorFuzzTest, AlignmentIsCorrect)
+    .WithDomains(fuzztest::InRange<size_t>(1, BUFFER_SIZE));
+
+void CoalescingWorks(const std::vector<size_t> &sizes,
+                     const std::vector<size_t> &free_order_indices) {
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+
+  std::vector<void *> ptrs;
+  for (size_t raw_size : sizes) {
+    size_t size = (raw_size % 64) + 1;
+    void *ptr = dp_malloc(alloc, size);
+    if (ptr != nullptr) {
+      memset(ptr, 0xFF, size);
+      ptrs.push_back(ptr);
+    }
+    if (ptrs.size() >= 20)
+      break;
+  }
+
+  if (ptrs.empty())
+    return;
+
+  std::vector<size_t> order;
+  for (size_t i = 0; i < ptrs.size(); ++i) {
+    order.push_back(i);
+  }
+
+  for (size_t idx : free_order_indices) {
+    if (order.size() < 2)
+      break;
+    size_t i = idx % order.size();
+    size_t j = (idx / 7) % order.size();
+    std::swap(order[i], order[j]);
+  }
+
+  for (size_t idx : order) {
+    EXPECT_EQ(dp_free(alloc, ptrs[idx]), 0);
+  }
+
+  EXPECT_EQ(alloc->free_list_head->next, nullptr)
+      << "Free list not fully coalesced";
+}
+FUZZ_TEST(AllocatorFuzzTest, CoalescingWorks)
+    .WithDomains(fuzztest::VectorOf(fuzztest::Arbitrary<size_t>()).WithMaxSize(30),
+                 fuzztest::VectorOf(fuzztest::Arbitrary<size_t>()).WithMaxSize(50));
+
+void DoubleFreeFails(size_t size) {
+  size = (size % 128) + 1;
+
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+
+  void *ptr = dp_malloc(alloc, size);
+  if (ptr == nullptr)
+    return;
+
+  memset(ptr, 0xDD, size);
+  EXPECT_EQ(dp_free(alloc, ptr), 0);
+  EXPECT_NE(dp_free(alloc, ptr), 0) << "Double free should fail";
+}
+FUZZ_TEST(AllocatorFuzzTest, DoubleFreeFails)
+    .WithDomains(fuzztest::Arbitrary<size_t>());
+
+void NullFreeDoesNotCrash() {
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+  dp_free(alloc, nullptr);
+}
+TEST(AllocatorFuzzTest, NullFreeDoesNotCrash) { NullFreeDoesNotCrash(); }
+
+void ZeroSizeAllocation() {
+  AllocatorFixture fixture;
+  dp_alloc *alloc = fixture.get();
+
+  void *ptr = dp_malloc(alloc, 0);
+  if (ptr != nullptr) {
+    EXPECT_EQ(dp_free(alloc, ptr), 0);
+  }
+}
+TEST(AllocatorFuzzTest, ZeroSizeAllocation) { ZeroSizeAllocation(); }
+
+} // namespace

@@ -31,7 +31,8 @@ target_include_directories(allocator PUBLIC
 install(TARGETS allocator DESTINATION lib)
 install(FILES allocator.h DESTINATION include)
 
-add_subdirectory(external/googletest)
+add_subdirectory(external/fuzztest)
+# googletest is provided by fuzztest via FetchContent
 add_subdirectory(external/benchmark)
 
 # Add subdirectories for source, tests, and benchmarks

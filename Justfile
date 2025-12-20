@@ -17,10 +17,11 @@ benchmark *FLAGS:
   cmake --build ./build --target allocator_benchmark
   ./build/bench/allocator_benchmark {{FLAGS}}
 
-fuzz:
-  just clean
-  CXX=clang CC=clang cmake -B build -DCMAKE_BUILD_TYPE=Debug .
-  cmake --build ./build --target allocator_fuzz
+# Run fuzz tests in fuzzing mode (requires clang). Pass --fuzz=TestSuite.TestName to run specific test.
+fuzz *FLAGS:
+  CC=clang CXX=clang++ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFUZZTEST_FUZZING_MODE=on .
+  cmake --build ./build --target allocator_fuzztest
+  ./build/test/allocator_fuzztest {{FLAGS}}
 
 format:
   clang-format --sort-includes --style=file --verbose -i $(fd -e h -e c -e cpp -e hpp -E external)
