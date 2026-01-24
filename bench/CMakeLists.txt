@@ -1,7 +1,3 @@
-add_executable(internal_benchmark internal_benchmark.cpp)
-target_link_libraries(internal_benchmark PUBLIC benchmark::benchmark)
-target_link_options(internal_benchmark PRIVATE)
-
 add_executable(allocator_benchmark allocator_benchmark.cpp)
-target_link_libraries(allocator_benchmark PUBLIC allocator benchmark::benchmark)
-
+target_link_libraries(allocator_benchmark PRIVATE allocator benchmark::benchmark)
+target_compile_options(allocator_benchmark PRIVATE -O3)
