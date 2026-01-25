@@ -31,9 +31,6 @@ target_include_directories(allocator PUBLIC
 install(TARGETS allocator DESTINATION lib)
 install(FILES allocator.h DESTINATION include)
 
-add_subdirectory(external/fuzztest)
-add_subdirectory(external/benchmark)
-
 if(ENABLE_TESTS)
   target_compile_definitions(allocator PUBLIC
     -DDP_LOG=1 -DDP_STATS=1 -DDP_FREE_VALIDATION=1

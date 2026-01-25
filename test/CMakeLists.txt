@@ -1,16 +1,32 @@
 include(CTest)
+include(FetchContent)
+
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG v1.17.0
+  GIT_PROGRESS TRUE
+)
+FetchContent_Declare(
+  googlefuzz
+  GIT_REPOSITORY https://github.com/google/fuzztest.git
+  GIT_TAG 8359318f6b5bde6436d58eec9ee1f9e74be553d5
+  GIT_PROGRESS TRUE
+)
+
+FetchContent_MakeAvailable(googletest googlefuzz)
 
 # Find all test files and create executables (excluding fuzztest files)
 file(GLOB TEST_SOURCES "*test.cpp")
 
-set(TEST_FLAGS -g -O0 -fsanitize=address,undefined)
-add_custom_target(tests ALL)
+set(TEST_FLAGS -fsanitize=address,undefined)
+add_custom_target(tests)
 
-foreach(TEST_SOURCE ${TEST_SOURCES})
-  get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+foreach(test_source ${TEST_SOURCES})
+  get_filename_component(TEST_NAME ${test_source} NAME_WE)
   set(EXECUTABLE_NAME "allocator_${TEST_NAME}")
 
-  add_executable(${EXECUTABLE_NAME} ${TEST_SOURCE})
+  add_executable(${EXECUTABLE_NAME} ${test_source})
   target_link_libraries(
       ${EXECUTABLE_NAME} PRIVATE allocator GTest::gtest_main
   )
