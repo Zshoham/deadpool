@@ -21,10 +21,8 @@ public:
   AllocatorFixture() {
     buffer_.resize(BUFFER_SIZE, 0);
     dp_init(&allocator_, buffer_.data(),
-            BUFFER_SIZE IF_DP_LOG(, {.debug = noop_log,
-                                     .info = noop_log,
-                                     .warning = noop_log,
-                                     .error = noop_log}));
+            BUFFER_SIZE IF_DP_LOG(
+                , {.debug = noop_log, .info = noop_log, .warning = noop_log, .error = noop_log}));
   }
 
   dp_alloc *get() { return &allocator_; }
@@ -75,11 +73,9 @@ void AllocationSequenceDoesNotCrash(const std::vector<size_t> &sizes) {
   }
 }
 FUZZ_TEST(AllocatorFuzzTest, AllocationSequenceDoesNotCrash)
-    .WithDomains(fuzztest::VectorOf(fuzztest::InRange<size_t>(0, 1024))
-                     .WithMaxSize(100));
+    .WithDomains(fuzztest::VectorOf(fuzztest::InRange<size_t>(0, 1024)).WithMaxSize(100));
 
-void AllocFreeInterleavedDoesNotCrash(
-    const std::vector<std::pair<bool, size_t>> &operations) {
+void AllocFreeInterleavedDoesNotCrash(const std::vector<std::pair<bool, size_t>> &operations) {
   AllocatorFixture fixture;
   dp_alloc *alloc = fixture.get();
 
@@ -107,10 +103,9 @@ void AllocFreeInterleavedDoesNotCrash(
   }
 }
 FUZZ_TEST(AllocatorFuzzTest, AllocFreeInterleavedDoesNotCrash)
-    .WithDomains(
-        fuzztest::VectorOf(fuzztest::PairOf(fuzztest::Arbitrary<bool>(),
-                                            fuzztest::Arbitrary<size_t>()))
-            .WithMaxSize(200));
+    .WithDomains(fuzztest::VectorOf(fuzztest::PairOf(fuzztest::Arbitrary<bool>(),
+                                                     fuzztest::Arbitrary<size_t>()))
+                     .WithMaxSize(200));
 
 void MemoryContentsPreserved(const std::vector<std::pair<size_t, uint8_t>> &allocs) {
   AllocatorFixture fixture;
@@ -141,9 +136,8 @@ void MemoryContentsPreserved(const std::vector<std::pair<size_t, uint8_t>> &allo
   }
 }
 FUZZ_TEST(AllocatorFuzzTest, MemoryContentsPreserved)
-    .WithDomains(fuzztest::VectorOf(fuzztest::PairOf(
-                                        fuzztest::Arbitrary<size_t>(),
-                                        fuzztest::Arbitrary<uint8_t>()))
+    .WithDomains(fuzztest::VectorOf(fuzztest::PairOf(fuzztest::Arbitrary<size_t>(),
+                                                     fuzztest::Arbitrary<uint8_t>()))
                      .WithMaxSize(50));
 
 void AlignmentIsCorrect(size_t size) {
@@ -200,8 +194,7 @@ void CoalescingWorks(const std::vector<size_t> &sizes,
     EXPECT_EQ(dp_free(alloc, ptrs[idx]), 0);
   }
 
-  EXPECT_EQ(alloc->free_list_head->next, nullptr)
-      << "Free list not fully coalesced";
+  EXPECT_EQ(alloc->free_list_head->next, nullptr) << "Free list not fully coalesced";
 }
 FUZZ_TEST(AllocatorFuzzTest, CoalescingWorks)
     .WithDomains(fuzztest::VectorOf(fuzztest::Arbitrary<size_t>()).WithMaxSize(30),
@@ -221,8 +214,7 @@ void DoubleFreeFails(size_t size) {
   EXPECT_EQ(dp_free(alloc, ptr), 0);
   EXPECT_NE(dp_free(alloc, ptr), 0) << "Double free should fail";
 }
-FUZZ_TEST(AllocatorFuzzTest, DoubleFreeFails)
-    .WithDomains(fuzztest::Arbitrary<size_t>());
+FUZZ_TEST(AllocatorFuzzTest, DoubleFreeFails).WithDomains(fuzztest::Arbitrary<size_t>());
 
 void NullFreeDoesNotCrash() {
   AllocatorFixture fixture;

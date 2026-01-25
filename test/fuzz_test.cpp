@@ -328,8 +328,7 @@ TEST_F(FuzzTest, MultipleSeedsConsistency) {
       ASSERT_EQ(dp_free(&allocator, p), 0);
     }
 
-    EXPECT_EQ(allocator.free_list_head->next, nullptr)
-        << "Coalescing failed for seed " << s;
+    EXPECT_EQ(allocator.free_list_head->next, nullptr) << "Coalescing failed for seed " << s;
   }
 }
 

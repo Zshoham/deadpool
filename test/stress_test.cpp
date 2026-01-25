@@ -2,7 +2,6 @@
 
 #include "test_common.hpp"
 
-
 // High-iteration alternating alloc/free - exercises coalescing under repeated use
 TEST_F(DPAllocatorTest, HighIterationAlternatingSmallAlloc) {
   constexpr int NUM_ITERATIONS = 10000;

@@ -145,8 +145,9 @@ void *dp_malloc(dp_alloc *allocator, size_t size) {
 
   *((uint8_t *)aligned_user_ptr - 1) = offset;
 
-  DP_INFO(allocator, "Allocated block at %p (size=%zu, offset=%u, free_list_head=%p, available=%zu)",
-          best_fit, best_fit->size, offset, (void *)allocator->free_list_head, allocator->available);
+  DP_INFO(allocator,
+          "Allocated block at %p (size=%zu, offset=%u, free_list_head=%p, available=%zu)", best_fit,
+          best_fit->size, offset, (void *)allocator->free_list_head, allocator->available);
 
   return (void *)aligned_user_ptr;
 }
@@ -160,7 +161,7 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
   while (current != NULL) {
     if (next_phys(allocator, free_block) == current) {
       DP_DEBUG(allocator, "Found coalscing block on the right (free)%p-%p with (coalscing)%p-%p",
-              free_block, current, current, next_phys(allocator, current));
+               free_block, current, current, next_phys(allocator, current));
       to_coalsce_right = current;
       if (current == allocator->free_list_head) {
         allocator->free_list_head = to_coalsce_right->next;
@@ -202,7 +203,7 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
 
   if (to_coalsce_left != NULL) {
     DP_DEBUG(allocator, "Coalscing left (cb=%zu, fb=%zu, avl=%zu)", to_coalsce_left->size,
-            free_block->size, allocator->available);
+             free_block->size, allocator->available);
     to_coalsce_left->size += sizeof(block_header) + free_block->size;
     allocator->available += sizeof(block_header);
     free_block = to_coalsce_left;
@@ -210,12 +211,13 @@ static block_header *coalsce(dp_alloc *allocator, block_header *free_block) {
 
   if (to_coalsce_right != NULL) {
     DP_DEBUG(allocator, "Coalscing left (fb=%zu, cb=%zu, avl=%zu)", free_block->size,
-            to_coalsce_right->size, allocator->available);
+             to_coalsce_right->size, allocator->available);
     free_block->size += sizeof(block_header) + to_coalsce_right->size;
     allocator->available += sizeof(block_header);
   }
 
-  DP_INFO(allocator, "Successfull coalscence (left=%p, right=%p, avl=%zu)", to_coalsce_left, to_coalsce_right, allocator->available);
+  DP_INFO(allocator, "Successfull coalscence (left=%p, right=%p, avl=%zu)", to_coalsce_left,
+          to_coalsce_right, allocator->available);
   return free_block;
 }
 
