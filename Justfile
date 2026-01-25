@@ -1,9 +1,9 @@
 
 configure:
-  cmake -B build .
+  cmake -B build -G Ninja .
 
 test coverage="OFF" *FLAGS:
-  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE={{coverage}} .
+  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON -DENABLE_COVERAGE={{coverage}} .
   cmake --build ./build --target tests
   ctest --output-on-failure --test-dir build/test/ || true
 
@@ -13,13 +13,13 @@ coverage: (test "ON")
   gcovr --html-details --output build/cover/report.html
 
 benchmark *FLAGS:
-  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release .
+  cmake -B build -G Ninja -DENABLE_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release .
   cmake --build ./build --target allocator_benchmark
   ./build/bench/allocator_benchmark {{FLAGS}}
 
 # Run fuzz tests in fuzzing mode (requires clang). Pass --fuzz=TestSuite.TestName to run specific test.
 fuzz *FLAGS:
-  CC=clang CXX=clang++ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFUZZTEST_FUZZING_MODE=on .
+  CC=clang CXX=clang++ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFUZZTEST_FUZZING_MODE=ON .
   cmake --build ./build --target allocator_fuzztest
   ./build/test/allocator_fuzztest {{FLAGS}}
 
