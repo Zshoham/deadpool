@@ -17,11 +17,11 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/c-compiler-1.11.0-h4d9bdce_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2025.11.12-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-21-21.1.7-default_h99862b1_2.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-21.1.7-default_h36abe19_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-21.1.7-default_cfg_hcbb2b3e_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-format-21-21.1.7-default_h99862b1_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-format-21.1.7-default_h99862b1_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-tools-21.1.7-default_h99862b1_2.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/clang_impl_linux-64-21.1.7-default_hbe8b877_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/clang_impl_linux-64-21.1.7-default_cfg_h0a60c25_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/cmake-4.2.1-hc85cc9f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorlog-6.10.1-pyh707e725_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/compiler-rt-21.1.7-ha770c72_0.conda
@@ -182,20 +182,20 @@ packages:
   license: ISC
   size: 152432
   timestamp: 1762967197890
-- conda: https://conda.anaconda.org/conda-forge/linux-64/clang-21.1.7-default_h36abe19_2.conda
-  sha256: 7b5c5b18b5748a694a133f9eb701e3ee3069dc802e4b0067451eceb368584fd9
-  md5: bc5df678b70e669f4a9735e8c3d34203
+- conda: https://conda.anaconda.org/conda-forge/linux-64/clang-21.1.7-default_cfg_hcbb2b3e_2.conda
+  sha256: d38812720fd731d553d7738c0dc1e4dd4552e1f88adc093d9bc3197cb82f0ace
+  md5: ebd67a7c82f43a8db9b59bebab4a583c
   depends:
   - binutils_impl_linux-64
   - clang-21 21.1.7 default_h99862b1_2
-  - clang_impl_linux-64 21.1.7 default_hbe8b877_2
+  - clang_impl_linux-64 21.1.7 default_cfg_h0a60c25_2
   - libgcc-devel_linux-64
   - llvm-openmp >=21.1.7
   - sysroot_linux-64
   license: Apache-2.0 WITH LLVM-exception
   license_family: Apache
-  size: 27351
-  timestamp: 1766016242864
+  size: 27692
+  timestamp: 1766170729733
 - conda: https://conda.anaconda.org/conda-forge/linux-64/clang-21-21.1.7-default_h99862b1_2.conda
   sha256: 6685fec8684ff9efcbac0057e24b6e8a1a891ff3d8042a1d01d84b29218fbd2c
   md5: 2c29eb9b378f4098c775d31e1e54de61
@@ -256,9 +256,9 @@ packages:
   license_family: Apache
   size: 22043965
   timestamp: 1766016652037
-- conda: https://conda.anaconda.org/conda-forge/linux-64/clang_impl_linux-64-21.1.7-default_hbe8b877_2.conda
-  sha256: 853426d70f33d6bc8a502cb29d75515f49e47d891d804d2f225527385b71fa6a
-  md5: 485f249d08f3d60f6c2a686c06ba7c5f
+- conda: https://conda.anaconda.org/conda-forge/linux-64/clang_impl_linux-64-21.1.7-default_cfg_h0a60c25_2.conda
+  sha256: e714cd1eb4db492ee24d200b1d1921811eea3bbc634d3f073c65ea483a1b5136
+  md5: c1bde6493f4d1418a63d63f06d34865d
   depends:
   - binutils_impl_linux-64
   - clang-21 21.1.7 default_h99862b1_2
@@ -269,8 +269,8 @@ packages:
   - sysroot_linux-64
   license: Apache-2.0 WITH LLVM-exception
   license_family: Apache
-  size: 27288
-  timestamp: 1766016220790
+  size: 27853
+  timestamp: 1766170702695
 - conda: https://conda.anaconda.org/conda-forge/linux-64/cmake-4.2.1-hc85cc9f_0.conda
   sha256: 655db6eddb370306d6d0ed3ac1d679ca044e45e03a43fc98cccfc5cafc341c5f
   md5: e4afa0cb7943cc9810546f70f02223d5
