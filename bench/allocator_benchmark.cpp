@@ -8,7 +8,8 @@
 #define ALLOCATOR_BENCHMARK_INSTANTIATE(fixture, test, ...)                                        \
   BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, DeadpoolPolicy) __VA_ARGS__;                     \
   BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, MallocPolicy) __VA_ARGS__;                       \
-  BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, MimallocPolicy) __VA_ARGS__;
+  BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, MimallocPolicy) __VA_ARGS__;                     \
+  BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, O1HeapPolicy) __VA_ARGS__;
 
 constexpr size_t BUFFER_SIZE = 1024 * 1024;
 
@@ -32,7 +33,6 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, SingleAlloc)(benchmark::State &sta
   for (auto _ : state) {
     void *ptr = this->alloc(size);
     benchmark::DoNotOptimize(ptr);
-    this->free(ptr);
   }
 }
 ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture,

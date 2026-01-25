@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <mimalloc.h>
+#include <o1heap.h>
 
 extern "C" {
 #include "allocator.h"
@@ -48,4 +49,20 @@ struct MimallocPolicy {
   void free(void *ptr) { mi_free(ptr); }
 
   void teardown() {}
+};
+
+struct O1HeapPolicy {
+  std::vector<uint8_t> buffer;
+  O1HeapInstance *heap{};
+
+  void init(size_t size) {
+    buffer.resize(size);
+    heap = o1heapInit(buffer.data(), size);
+  }
+
+  void *alloc(size_t size) { return o1heapAllocate(heap, size); }
+
+  void free(void *ptr) { o1heapFree(heap, ptr); }
+
+  void teardown() { buffer.clear(); }
 };
