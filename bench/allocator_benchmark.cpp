@@ -5,6 +5,11 @@
 
 #include "allocator_policies.h"
 
+#define ALLOCATOR_BENCHMARK_INSTANTIATE(fixture, test, ...)                                        \
+  BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, DeadpoolPolicy) __VA_ARGS__;                     \
+  BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, MallocPolicy) __VA_ARGS__;                       \
+  BENCHMARK_TEMPLATE_INSTANTIATE_F(fixture, test, MimallocPolicy) __VA_ARGS__;
+
 constexpr size_t BUFFER_SIZE = 1024 * 1024;
 
 template <typename Policy> class AllocatorFixture : public benchmark::Fixture {
@@ -30,12 +35,8 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, SingleAlloc)(benchmark::State &sta
     this->free(ptr);
   }
 }
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, SingleAlloc, DeadpoolPolicy)
-    ->RangeMultiplier(4)
-    ->Range(16, 4096);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, SingleAlloc, MallocPolicy)
-    ->RangeMultiplier(4)
-    ->Range(16, 4096);
+ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture,
+                                SingleAlloc, ->RangeMultiplier(4)->Range(16, 4096));
 
 // Batch allocation benchmark - allocate N objects then free all
 BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, BatchAllocFree)(benchmark::State &state) {
@@ -53,12 +54,8 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, BatchAllocFree)(benchmark::State &
   }
   state.SetItemsProcessed(state.iterations() * count * 2);
 }
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, BatchAllocFree, DeadpoolPolicy)
-    ->RangeMultiplier(4)
-    ->Range(16, 256);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, BatchAllocFree, MallocPolicy)
-    ->RangeMultiplier(4)
-    ->Range(16, 256);
+ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture,
+                                BatchAllocFree, ->RangeMultiplier(4)->Range(16, 256));
 
 // Mixed workload - allocate/free in random order
 BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, MixedWorkload)(benchmark::State &state) {
@@ -85,8 +82,7 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, MixedWorkload)(benchmark::State &s
     this->free(p);
   }
 }
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, MixedWorkload, DeadpoolPolicy);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, MixedWorkload, MallocPolicy);
+ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture, MixedWorkload);
 
 // LIFO pattern - stack-like allocation
 BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, LifoPattern)(benchmark::State &state) {
@@ -103,12 +99,8 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, LifoPattern)(benchmark::State &sta
   }
   state.SetItemsProcessed(state.iterations() * depth * 2);
 }
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, LifoPattern, DeadpoolPolicy)
-    ->RangeMultiplier(2)
-    ->Range(64, 4096);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, LifoPattern, MallocPolicy)
-    ->RangeMultiplier(2)
-    ->Range(64, 4096);
+ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture,
+                                LifoPattern, ->RangeMultiplier(2)->Range(512, 4096));
 
 // FIFO pattern - queue-like allocation (first allocated, first freed)
 BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, FifoPattern)(benchmark::State &state) {
@@ -125,15 +117,8 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, FifoPattern)(benchmark::State &sta
   }
   state.SetItemsProcessed(state.iterations() * depth * 2);
 }
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, FifoPattern, DeadpoolPolicy)
-    ->RangeMultiplier(2)
-    ->Range(64, 4096);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, FifoPattern, MallocPolicy)
-    ->RangeMultiplier(2)
-    ->Range(64, 4096);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, FifoPattern, MimallocPolicy)
-    ->RangeMultiplier(2)
-    ->Range(64, 4096);
+ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture,
+                                FifoPattern, ->RangeMultiplier(2)->Range(512, 4096));
 
 // Fragmentation stress - create holes by freeing every other block, then allocate
 // varying sizes to stress coalescing and best-fit behavior
@@ -175,11 +160,7 @@ BENCHMARK_TEMPLATE_METHOD_F(AllocatorFixture, FragmentationStress)(benchmark::St
     }
   }
 }
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, FragmentationStress, DeadpoolPolicy)
-    ->RangeMultiplier(2)
-    ->Range(512, 4096);
-BENCHMARK_TEMPLATE_INSTANTIATE_F(AllocatorFixture, FragmentationStress, MallocPolicy)
-    ->RangeMultiplier(2)
-    ->Range(64, 4096);
+ALLOCATOR_BENCHMARK_INSTANTIATE(AllocatorFixture,
+                                FragmentationStress, ->RangeMultiplier(2)->Range(512, 4096));
 
 BENCHMARK_MAIN();
