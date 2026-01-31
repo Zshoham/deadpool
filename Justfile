@@ -1,27 +1,24 @@
 
-configure:
-  cmake -B build -G Ninja .
+configure *FLAGS:
+  cmake -B build -G Ninja {{FLAGS}} .
 
-test coverage="OFF" *FLAGS:
-  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON -DENABLE_COVERAGE={{coverage}} .
+test *FLAGS: (configure "-DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON")
   cmake --build ./build --target tests
-  ctest --output-on-failure --test-dir build/test/ || true
+  ctest --output-on-failure --test-dir build/test/ {{FLAGS}} || true
 
-coverage: (test "ON")
+coverage: (configure "-DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON -DENABLE_COVERAGE=ON")
   ctest --test-dir build -T Coverage
   mkdir -p build/cover
   gcovr --html-details --output build/cover/report.html
 
-benchmark *FLAGS:
-  cmake -B build -G Ninja -DENABLE_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release .
+benchmark *FLAGS: (configure "-DENABLE_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release")
   cmake --build ./build --target allocator_benchmark
   ./build/bench/allocator_benchmark {{FLAGS}}
 
 # Run fuzz tests in fuzzing mode (requires clang). Pass --fuzz=TestSuite.TestName to run specific test.
-fuzz *FLAGS:
-  CC=clang CXX=clang++ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFUZZTEST_FUZZING_MODE=ON .
-  cmake --build ./build --target allocator_fuzztest
-  ./build/test/allocator_fuzztest {{FLAGS}}
+fuzz *FLAGS: (configure "-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DENABLE_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFUZZTEST_FUZZING_MODE=ON")
+  cmake --build ./build --target allocator_fuzz
+  ./build/test/allocator_fuzz {{FLAGS}}
 
 format:
   clang-format --sort-includes --style=file --verbose -i $(fd -e h -e c -e cpp -e hpp -E external)
